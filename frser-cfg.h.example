@@ -1,0 +1,20 @@
+#ifndef _FRSER_CFG_H_
+#define _FRSER_CFG_H_
+
+#define FRSER_FEAT_PARALLEL
+#define FRSER_FEAT_LPCFWH
+#define FRSER_FEAT_SPI
+
+#define FRSER_FEAT_LAST_OP
+#define FRSER_FEAT_UART_TIMEOUT
+#define FRSER_FEAT_DYNPROTO
+#define FRSER_FEAT_PIN_STATE
+#define FRSER_FEAT_DBG_CONSOLE
+
+#define FRSER_NAME "Example flasher"
+
+#define FRSER_PARALLEL_BITS 19
+
+#define FRSER_FEAT_SPISPEED
+
+#endif

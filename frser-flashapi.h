@@ -1,7 +1,7 @@
 /*
- * This file is part of the frser-atmega644 project.
+ * This file is part of the libfrser project.
  *
- * Copyright (C) 2009 Urja Rannikko <urjaman@gmail.com>
+ * Copyright (C) 2009,2015 Urja Rannikko <urjaman@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,29 +18,42 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301 USA
  */
 
-/* Define one to make a single bustype programmer. */
-//#define FORCE_BUSTYPE CHIP_BUSTYPE_PARALLEL
-//#define FORCE_BUSTYPE CHIP_BUSTYPE_LPC
-//#define FORCE_BUSTYPE CHIP_BUSTYPE_FWH
-//#define FORCE_BUSTYPE CHIP_BUSTYPE_SPI
+/* These are the functions related to flashing that frser will call. */
+/* Some of of them must be able to execute a part of the frser
+   operation over UART (flash_readn and flash_spiop). */
+/* flash_readn: send len bytes over uart. */
+/* flash_spiop: receive sbytes, send S_ACK, send rbytes */
 
-#define CHIP_BUSTYPE_PARALLEL (1 << 0)
-#define CHIP_BUSTYPE_LPC (1 << 1)
-#define CHIP_BUSTYPE_FWH (1 << 2)
-#define CHIP_BUSTYPE_SPI (1 << 3)
+#ifdef _FRSER_FLASHAPI_H_
+#define _FRSER_FLASHAPI_H_
 
-#ifdef FORCE_BUSTYPE
-#define SUPPORTED_BUSTYPES FORCE_BUSTYPE
-#else
-#define SUPPORTED_BUSTYPES (CHIP_BUSTYPE_PARALLEL|CHIP_BUSTYPE_LPC|CHIP_BUSTYPE_FWH|CHIP_BUSTYPE_SPI)
+/* The flashapi functions need to know S_ACK and the defines here come from there,
+   thus give frser-int.h */
+#include "frser-int.h"
+
+#ifdef FRSER_FEAT_PIN_STATE
+/* This will be used to disable pin drivers. */
+void flash_set_safe(void);
 #endif
 
-void flash_set_safe(void);
+/* This can be always called to re-init the interface, or to enable pin drivers. */
 void flash_select_protocol(uint8_t allowed_protocols);
+
+#ifdef FRSER_FEAT_NONSPI
 uint8_t flash_read(uint32_t addr);
 void flash_readn(uint32_t addr, uint32_t len);
 void flash_write(uint32_t addr, uint8_t data);
+#endif
+
+#ifdef FRSER_FEAT_SPI
 void flash_spiop(uint32_t sbytes, uint32_t rbytes);
-uint8_t flash_get_proto(void);
-uint8_t flash_idle_clock(void);
+#ifdef FRSER_FEAT_SPISPEED
+uint32_t spi_set_speed(uint32_t hz);
+#endif
+#endif
+
+#ifdef FRSER_FEAT_DYNPROTO
 uint8_t flash_plausible_protocols(void);
+#endif
+
+#endif

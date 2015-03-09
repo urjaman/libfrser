@@ -1,3 +1,5 @@
+#ifndef _TYPEU_H_
+#define _TYPEU_H_
 
 typedef union u32u {
 	uint32_t l;
@@ -8,3 +10,5 @@ typedef union u16u {
 	uint16_t l;
 	uint8_t b[2];
 } u16_u;
+
+#endif

@@ -1,7 +1,7 @@
 /*
- * This file is part of the frser-atmega644 project.
+ * This file is part of the libfrser project.
  *
- * Copyright (C) 2009 Urja Rannikko <urjaman@gmail.com>
+ * Copyright (C) 2009,2015 Urja Rannikko <urjaman@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,42 +17,54 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301 USA
  */
+#ifndef _FRSER_H_
+#define _FRSER_H_
 
+#include "frser-cfg.h"
+
+/* Call this and frser owns your AVR. */
 void frser_main(void) __attribute__((noreturn));
 
-/* Flashrom serial interface AVR implementation */
-#define S_ACK 0x06
-#define S_NAK 0x15
-
-#define S_CMD_NOP		0x00            /* No operation                                 */
-#define S_CMD_Q_IFACE           0x01            /* Query interface version                      */
-#define S_CMD_Q_CMDMAP		0x02		/* Query supported commands bitmap		*/
-#define S_CMD_Q_PGMNAME         0x03            /* Query programmer name                        */
-#define S_CMD_Q_SERBUF          0x04            /* Query Serial Buffer Size                     */
-#define S_CMD_Q_BUSTYPE         0x05            /* Query supported bustypes                     */
-#define S_CMD_Q_CHIPSIZE        0x06            /* Query supported chipsize (2^n format)        */
-#define S_CMD_Q_OPBUF           0x07            /* Query operation buffer size                  */
-#define S_CMD_Q_WRNMAXLEN	0x08		/* Query Write to opbuf: Write-N maximum lenght */
-#define S_CMD_R_BYTE            0x09            /* Read a single byte                           */
-#define S_CMD_R_NBYTES          0x0A            /* Read n bytes                                 */
-#define S_CMD_O_INIT            0x0B            /* Initialize operation buffer                  */
-#define S_CMD_O_WRITEB          0x0C            /* Write opbuf: Write byte with address         */
-#define S_CMD_O_WRITEN		0x0D		/* Write to opbuf: Write-N			*/
-#define S_CMD_O_DELAY           0x0E            /* Write opbuf: udelay                          */
-#define S_CMD_O_EXEC            0x0F            /* Execute operation buffer                     */
-#define S_CMD_SYNCNOP		0x10		/* Special no-operation that returns NAK+ACK	*/
-#define S_CMD_Q_RDNMAXLEN	0x11		/* Query read-n maximum length			*/
-#define S_CMD_S_BUSTYPE		0x12		/* Set used bustype(s).				*/
-#define S_CMD_O_SPIOP		0x13		/* Perform SPI operation.			*/
-#define S_CMD_S_SPI_FREQ	0x14		/* Set SPI clock frequency			*/
-#define S_CMD_S_PIN_STATE	0x15		/* Enable/disable output drivers		*/
-// #define S_CMD_O_TOGGLERDY	0x16		/* Write to opbuf: wait JEDEC toggle ready	*/
-#define S_CMD_O_POLL		0x17		/* Write to opbuf: poll (details in code/soon doc) */
-#define S_CMD_O_POLL_DLY	0x18		/* Write to opbuf: poll (details in code/soon doc) */
-
-/* The biggest valid command value */
-#define S_MAXCMD 0x18
-/* The maximum static length of parameters (poll_dly)) */
-#define S_MAXLEN 0x08
-
+#ifdef FRSER_FEAT_LAST_OP
 uint8_t get_last_op(void);
+#endif
+
+/* These allow you to override to a single bustype (eg. FWH-only). */
+/* I suppose you could put one of them into frser-cfg.h too.. */
+/* Do still also pick the FRSER_FEAT_* that includes your bustype. */
+
+//#define FORCE_BUSTYPE CHIP_BUSTYPE_PARALLEL
+//#define FORCE_BUSTYPE CHIP_BUSTYPE_LPC
+//#define FORCE_BUSTYPE CHIP_BUSTYPE_FWH
+//#define FORCE_BUSTYPE CHIP_BUSTYPE_SPI
+
+#define CHIP_BUSTYPE_PARALLEL (1 << 0)
+#define CHIP_BUSTYPE_LPC (1 << 1)
+#define CHIP_BUSTYPE_FWH (1 << 2)
+#define CHIP_BUSTYPE_SPI (1 << 3)
+
+#ifdef FRSER_FEAT_PARALLEL
+#define _FR_SUPP0 CHIP_BUSTYPE_PARALLEL
+#else
+#define _FR_SUPP0 0
+#endif
+
+#ifdef FRSER_FEAT_LPCFWH
+#define _FR_SUPP1 CHIP_BUSTYPE_LPC | CHIP_BUSTYPE_FWH
+#else
+#define _FR_SUPP1 0
+#endif
+
+#ifdef FRSER_FEAT_SPI
+#define _FR_SUPP2 CHIP_BUSTYPE_SPI
+#else
+#define _FR_SUPP2 0
+#endif
+
+#ifdef FORCE_BUSTYPE
+#define SUPPORTED_BUSTYPES FORCE_BUSTYPE
+#else
+#define SUPPORTED_BUSTYPES (_FR_SUPP0 | _FR_SUPP1 | _FR_SUPP2)
+#endif
+
+#endif /* _FRSER_H_ */

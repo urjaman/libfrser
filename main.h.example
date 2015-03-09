@@ -1,7 +1,7 @@
 /*
- * This file is part of the frser-atmega644 project.
+ * This file is part of the libfrser project.
  *
- * Copyright (C) 2013 Urja Rannikko <urjaman@gmail.com>
+ * Copyright (C) 2010 Urja Rannikko <urjaman@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,8 +18,19 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301 USA
  */
 
-/* Console Interface */
-void ciface_main(void);
-#define MAXTOKENS 16
-extern unsigned char token_count;
-extern unsigned char* tokenptrs[];
+/* This is an example of what libfrser expects main.h to contain. */
+
+#define F_CPU 12000000
+#include <util/delay.h>
+#include <avr/io.h>
+#include <avr/sleep.h>
+#include <avr/pgmspace.h>
+#include <avr/power.h>
+#include <avr/sleep.h>
+#include <util/delay.h>
+#include <ctype.h>
+#include <string.h>
+#include <stdlib.h>
+#include <alloca.h>
+#include <inttypes.h>
+#include <setjmp.h>

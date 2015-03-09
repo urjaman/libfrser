@@ -1,7 +1,7 @@
 /*
- * This file is part of the frser-atmega644 project.
+ * This file is part of the libfrser project.
  *
- * Copyright (C) 2013 Urja Rannikko <urjaman@gmail.com>
+ * Copyright (C) 2010,2011,2015 Urja Rannikko <urjaman@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,30 +18,26 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301 USA
  */
 
-#include "main.h"
-#include "uart.h"
-#include "console.h"
-#include "appdb.h"
-#include "lib.h"
-#include "ciface.h"
+/* This is an example for what frser.c requires from an uart.h */
 
-#define RECVBUFLEN 64
+#ifndef _UART_H_
+#define _UART_H_
 
-const unsigned char prompt[] PROGMEM = "\x0D\x0A> ";
-unsigned char recvbuf[RECVBUFLEN];
-unsigned char token_count;
-unsigned char* tokenptrs[MAXTOKENS] __attribute__((aligned(16)));
+/* These function names can be any, but to show the types. */
+uint8_t uart_recv(void);
+void uart_send(uint8_t val);
+/* ------- */
 
+/* ifdef FRSER_FEAT_UART_TIMEOUT */
+void uart_set_timeout(jmp_buf *buf);
+/* endif */
 
-void ciface_main(void) {
-	void(*func)(void);
-	for (;;) {
-		sendstr_P((PGM_P)prompt);
-		if (getline(recvbuf,RECVBUFLEN)) return;
-		tokenize(recvbuf,tokenptrs, &token_count);
-		if (token_count) {
-			func = find_appdb(tokenptrs[0]);
-			func();
-		}
-	}
-}
+/* These defines are what is really used: */
+#define BAUD 115200
+
+#define RECEIVE() uart_recv()
+#define SEND(n) uart_send(n)
+#define UART_BUFLEN 1280
+#define UARTTX_BUFLEN 0
+
+#endif
