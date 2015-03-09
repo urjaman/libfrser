@@ -18,7 +18,7 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301 USA
  */
 
-/* These are the functions related to flashing that frser will call. */
+/* These are the functions (mostly flashing related) that frser will call. */
 /* Some of of them must be able to execute a part of the frser
    operation over UART (flash_readn and flash_spiop). */
 /* flash_readn: send len bytes over uart. */
@@ -54,6 +54,11 @@ uint32_t spi_set_speed(uint32_t hz);
 
 #ifdef FRSER_FEAT_DYNPROTO
 uint8_t flash_plausible_protocols(void);
+#endif
+
+#ifdef FRSER_FEAT_DBG_CONSOLE
+/* The console must exit if it sees a S_CMD_NOP (0) */
+void ciface_main(void);
 #endif
 
 #endif

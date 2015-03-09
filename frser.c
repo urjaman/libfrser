@@ -20,7 +20,7 @@
 
 #include "main.h"
 #include "uart.h"
-#include "flash-flashapi.h"
+#include "frser-flashapi.h"
 #include "udelay.h"
 #include "frser.h"
 #include "frser-int.h"
@@ -28,12 +28,12 @@
 
 #ifdef FRSER_FEAT_NONSPI
 // Sys_bytes = stack + bss vars.
-#ifndef SYS_BYTES
-#define SYS_BYTES 320
+#ifndef FRSER_SYS_BYTES
+#define FRSER_SYS_BYTES 320
 #endif
 #define RAM_BYTES (RAMEND-RAMSTART+1)
 /* The length of the operation buffer */
-#define S_OPBUFLEN (RAM_BYTES-SYS_BYTES-UART_BUFLEN-UARTTX_BUFLEN)
+#define S_OPBUFLEN (RAM_BYTES-FRSER_SYS_BYTES-UART_BUFLEN-UARTTX_BUFLEN)
 #else
 /* Fake. */
 #define S_OPBUFLEN 12
@@ -371,6 +371,7 @@ static void do_cmd_readnbytes(uint8_t *parbuf) {
 	SEND(S_ACK);
 	addr = buf2u24(parbuf);
 	n = buf2u24(parbuf+3);
+	if (n==0) n = 1<<24; /* Protocol detail, dont show it to flash_readn */
 	flash_readn(addr,n);
 }
 #else /* FRSER_FEAT_NONSPI ^^ */
