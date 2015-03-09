@@ -1,0 +1,11 @@
+This is the hardware-independent parts of frser pulled out 
+so one can easily use them in different flashers.
+
+The point is to include this stuff as a subfolder (eg. git submodule)
+in your project and point your Makefile to the .c 
+files when you're compiling your project and -I the folder.
+
+Your project should contain real versions of the headers
+named *.example and implement the stuff - also the stuff
+frser-flashapi.h ...
+
