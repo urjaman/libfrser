@@ -80,7 +80,7 @@ const char PROGMEM ca_wrnlen[4] = { S_ACK, 0x00, 0x01, 0x00 };
 const char PROGMEM ca_rdnmaxlen[4] = { S_ACK, RDNMAX&0xFF, (RDNMAX>>8)&0xFF, (RDNMAX>>16)&0xFF };
 
 #ifndef FRSER_FEAT_DYNPROTO
-const char PROGMEM ca_bustypes[2] = { S_ACK, SUPPORTED_BUSTYPES }; */
+const char PROGMEM ca_bustypes[2] = { S_ACK, SUPPORTED_BUSTYPES };
 #endif
 
 #ifdef FRSER_FEAT_PARALLEL
@@ -381,6 +381,7 @@ static uint32_t opbuf_delay_acc = 0;
 
 static void do_cmd_opbuf_delay(uint8_t *parbuf) {
 	u32_u usecs;
+	usecs.l = 0;
 	usecs.b[0] = parbuf[0];
 	usecs.b[1] = parbuf[1];
 	usecs.b[2] = parbuf[2];
