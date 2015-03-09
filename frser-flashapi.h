@@ -24,7 +24,7 @@
 /* flash_readn: send len bytes over uart. */
 /* flash_spiop: receive sbytes, send S_ACK, send rbytes */
 
-#ifdef _FRSER_FLASHAPI_H_
+#ifndef _FRSER_FLASHAPI_H_
 #define _FRSER_FLASHAPI_H_
 
 /* The flashapi functions need to know S_ACK and the defines here come from there,

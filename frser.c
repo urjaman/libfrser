@@ -20,10 +20,11 @@
 
 #include "main.h"
 #include "uart.h"
+#include "frser-cfg.h"
+#include "frser-int.h"
 #include "frser-flashapi.h"
 #include "udelay.h"
 #include "frser.h"
-#include "frser-int.h"
 #include "typeu.h"
 
 #ifdef FRSER_FEAT_NONSPI
@@ -367,11 +368,12 @@ static void do_cmd_readbyte(uint8_t *parbuf) {
 }
 
 static void do_cmd_readnbytes(uint8_t *parbuf) {
-	uint32_t addr,n;
+	uint32_t addr;
+	uint32_t n;
 	SEND(S_ACK);
 	addr = buf2u24(parbuf);
 	n = buf2u24(parbuf+3);
-	if (n==0) n = 1<<24; /* Protocol detail, dont show it to flash_readn */
+	if (n==0) n = ((uint32_t)1 << 24); /* Protocol detail, dont show it to flash_readn */
 	flash_readn(addr,n);
 }
 #else /* FRSER_FEAT_NONSPI ^^ */
