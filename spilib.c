@@ -20,6 +20,7 @@
 
 #include "main.h"
 #include "spilib.h"
+#include "uart.h"
 
 /* This is just hardware-independent generic code to help with spi. */
 
