@@ -1,5 +1,7 @@
 This is the hardware-independent parts of frser pulled out 
 so one can easily use them in different flashers.
+Also included some hardware-specific bits (SPI) that can
+be used by multiple flashers.
 
 The point is to include this stuff as a subfolder (eg. git submodule)
 in your project and point your Makefile to the .c 
