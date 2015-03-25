@@ -1,0 +1,7 @@
+#This is a fragment that you can include from the "hosting" makefile
+#to include the right things...
+
+FRP := libfrser
+CFLAGS += -I$(FRP)
+DEPS += $(FRP)/frser.h $(FRP)/frser-int.h $(FRP)/frser-flashapi.h $(FRP)/typeu.h $(FRP)/udelay.h frser-cfg.h $(FRP)/Makefile.frser
+SOURCES += $(FRP)/frser.c $(FRP)/udelay.c
