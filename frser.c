@@ -46,7 +46,7 @@ struct constanswer {
 } __attribute__ ((__packed__));
 
 #ifdef FRSER_FEAT_LAST_OP
-static uint8_t last_op = 0xfe;
+static uint8_t last_op;
 uint8_t get_last_op(void) {
 	return last_op;
 }
@@ -147,7 +147,7 @@ static uint8_t last_set_bus_types;
 #endif
 
 #ifdef FRSER_FEAT_PIN_STATE
-static uint8_t last_set_pin_state = 1;
+static uint8_t last_set_pin_state;
 #endif
 
 
@@ -458,6 +458,11 @@ static void do_cmd_pin_state(uint8_t v) {
 
 
 void frser_main(void) {
+#ifdef FRSER_FEAT_PIN_STATE
+	last_set_pin_state = 1;
+#endif
+	LAST_OP(0xFE);
+
 #ifdef FRSER_FEAT_UART_TIMEOUT
 	jmp_buf uart_timeout;
 #endif
