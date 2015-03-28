@@ -1,0 +1,5 @@
+#This is a fragment that you can include from the "hosting" makefile
+#to include the SPI library.
+
+DEPS += $(FRP)/spilib.h spihw.h
+SOURCES += $(FRP)/spilib.c
