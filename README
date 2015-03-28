@@ -6,6 +6,11 @@ be used by multiple flashers.
 The point is to include this stuff as a subfolder (eg. git submodule)
 in your project and point your Makefile to the .c 
 files when you're compiling your project and -I the folder.
+---
+Or alternatively, in your makefile:
+include libfrser/Makefile.frser
+
+Also maybe other makefile fragments that are provided.
 
 Your project should contain real versions of the headers
 named *.example and implement the stuff - also the stuff
