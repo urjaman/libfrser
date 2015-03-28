@@ -1,0 +1,5 @@
+#This is a fragment that you can include from the "hosting" makefile
+#to include the AVR SPI code.
+
+DEPS += $(FRP)/spihw_avrspi.h
+SOURCES += $(FRP)/spihw_avrspi.c
