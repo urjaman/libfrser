@@ -28,8 +28,7 @@
 #define CLK_PORT			PORTD
 #define CLK				PD7
 
-/* This also not part of interface used by lpcfwh.c */
-#define delay() asm("nop")
+
 
 
 bool nibble_init();
@@ -46,7 +45,5 @@ void nibble_set_dir(uint8_t dir);
 uint8_t nibble_read(void);
 void nibble_write(uint8_t data);
 #define clock_cycle() do { CLK_PORT &= ~_BV(CLK); CLK_PORT |= _BV(CLK); } while(0)
-/* I think this needs to be a part of the interface, sorry. but yeah hw-dependent :P */
-#define swap(x) do { asm volatile("swap %0" : "=r" (x) : "0" (x)); } while(0)
 
 #endif /* NIBBLE_H_ */

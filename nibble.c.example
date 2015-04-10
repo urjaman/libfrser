@@ -19,6 +19,9 @@
 #include "main.h"
 #include "nibble.h"
 
+#define delay() asm("nop")
+#define swap(x) do { asm volatile("swap %0" : "=r" (x) : "0" (x)); } while(0)
+
 
 
 #define FRAME_DDR			DDRD
