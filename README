@@ -14,5 +14,10 @@ Also maybe other makefile fragments that are provided.
 
 Your project should contain real versions of the headers
 named *.example and implement the stuff - also the stuff
-frser-flashapi.h ...
+in frser-flashapi.h.
+
+License
+-------
+the nibble and lpcfwh.c code are GPLv3+,
+everything else is GPLv2+
 

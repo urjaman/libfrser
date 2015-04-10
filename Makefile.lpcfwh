@@ -1,0 +1,6 @@
+#This is a fragment that you can include from the "hosting" makefile
+#to include the LPC and FWH device-independent codes from the library
+#and your device-dependent nibble.c&h
+
+DEPS += $(FRP)/lpcfwh.h nibble.h
+SOURCES += $(FRP)/lpcfwh.c nibble.c
