@@ -23,6 +23,26 @@
 
 /* Generic */
 
+static uint8_t nib_byte_read(void) {
+	return clocked_nibble_read()
+	| (clocked_nibble_read() << 4);
+}
+
+static void nib_byte_write(uint8_t byte) {
+	clocked_nibble_write(byte);
+	clocked_nibble_write_hi(byte);
+}
+
+static bool nibble_ready_sync(void) {
+	uint8_t nib;
+	uint8_t x=32;
+	do {
+		nib = clocked_nibble_read();
+		if (!(x--)) return false;
+	} while (nib != 0);
+	return true;
+}
+
 static void nibble_send_addr_24b(uint32_t addr) {
 	u32_u a;
 	a.l = addr;
@@ -71,7 +91,7 @@ int lpc_read_address(uint32_t addr) {
 	clock_cycle();
 	if (!nibble_ready_sync())
 		return -1;
-	uint8_t byte = byte_read();
+	uint8_t byte = nib_byte_read();
 	clock_cycle();
 	clock_cycle();
 	clock_cycle();
@@ -82,7 +102,7 @@ bool lpc_write_address(uint32_t addr, uint8_t byte) {
 	lpc_start();
 	lpc_nibble_write(LPC_CYCTYPE_WRITE);
 	lpc_send_addr(addr);
-	byte_write(byte);
+	nib_byte_write(byte);
 	nibble_set_dir(INPUT);
 	clock_cycle();
 	clock_cycle();
@@ -133,7 +153,7 @@ int fwh_read_address(uint32_t addr) {
 	clock_cycle();
 	if (!nibble_ready_sync())
 		return -1;
-	uint8_t byte = byte_read();
+	uint8_t byte = nib_byte_read();
 	clock_cycle();
 	nibble_set_dir(OUTPUT);
 	fwh_nibble_write(0xf);
@@ -146,7 +166,7 @@ bool fwh_write_address(uint32_t addr, uint8_t byte) {
 	fwh_nibble_write(0);	/* IDSEL hardwired */
 	fwh_send_imaddr(addr);
 	fwh_nibble_write(0);	/* IMSIZE single byte */
-	byte_write(byte);
+	nib_byte_write(byte);
 	nibble_write(0xf);
 	nibble_set_dir(INPUT);
 	clock_cycle();
