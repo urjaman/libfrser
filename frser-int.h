@@ -99,4 +99,13 @@
 #define FRSER_BM_B2 (_FR_BM_B2_BASE | _FR_BM_B2_ADD0 | _FR_BM_B2_ADD1 | _FR_BM_B2_ADD2 | _FR_BM_B2_ADD3)
 #define FRSER_BM_B3 (_FR_BM_B3_BASE)
 
+#include <stdint.h>
+
+/* Teensy vs AVR compat. */
+#if INTPTR_MAX > 0x7FFFUL
+#define pgm_read_ptr pgm_read_dword
+#else
+#define pgm_read_ptr pgm_read_word
+#endif
+
 #endif /* _FRSER_INT_H_ */

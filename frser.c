@@ -502,7 +502,7 @@ void frser_main(void) {
 		/* These are the simple query-like operations, we just reply from ProgMem: */
 		/* NOTE: Operations that have a const answer cannot have parameters !!!    */
 		if (a_len) {
-			PGM_P data = (PGM_P)pgm_read_word(&(const_table[op].data));
+			PGM_P data = (PGM_P)pgm_read_ptr(&(const_table[op].data));
 			for(i=0;i<a_len;i++) {
 				uint8_t c = pgm_read_byte(&(data[i]));
 				SEND(c);
