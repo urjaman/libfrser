@@ -104,8 +104,6 @@
 /* Teensy vs AVR compat. */
 #if INTPTR_MAX > 0x7FFFUL
 #define pgm_read_ptr pgm_read_dword
-#else
-#define pgm_read_ptr pgm_read_word
 #endif
 
 #endif /* _FRSER_INT_H_ */
