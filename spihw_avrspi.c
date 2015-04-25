@@ -55,7 +55,7 @@ uint32_t spi_set_speed(uint32_t hz) {
 		spd = 6;
 		hz_spd = F_CPU/128;
 	} else {
-		for (uint8_t spd=0;spd<7;spd++) {
+		for (spd=0;spd<7;spd++) {
 			hz_spd = pgm_read_dword(&(spd_hz_table[spd]));
 			if (hz >= hz_spd) break;
 		}
