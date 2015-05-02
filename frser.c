@@ -55,6 +55,15 @@ uint8_t get_last_op(void) {
 #define LAST_OP(x)
 #endif
 
+#ifndef FRSER_FEAT_PRE_OPRX_HOOK
+#define FRSER_FEAT_PRE_OPRX_HOOK()
+#endif
+
+#ifndef FRSER_FEAT_POST_OPRX_HOOK
+#define FRSER_FEAT_POST_OPRX_HOOK()
+#endif
+
+
 /* Calculate a nice read-n max value so that it doesnt hurt performance, but
    doesnt allow the device to be accidentally left in an "infini-tx" mode.
    This is the amount of data it can send based on baud rate in 2 seconds rounded to kB. */
@@ -475,7 +484,10 @@ void frser_main(void) {
 #ifdef FRSER_FEAT_UART_TIMEOUT
 		uart_set_timeout(NULL);
 #endif
+		FRSER_FEAT_PRE_OPRX_HOOK();
 		op = RECEIVE();
+		FRSER_FEAT_POST_OPRX_HOOK();
+
 #ifdef FRSER_FEAT_DBG_CONSOLE
 		if (op == 0x20) { /* Space bar gives you your debug console. */
 			ciface_main();
