@@ -27,6 +27,15 @@
 #include "frser.h"
 #include "typeu.h"
 
+/* Report -4 for safety (atleast -1 because our buffer cant be filled 100%) */
+#define UART_RBUFLEN (UART_BUFLEN-4)
+
+/* Maximum Write-N length..*/
+/* The 7 in SPI means cmd(1) + txamt(3) + rxamt(3) => 7 */
+#define WRNMAX_SPI (UART_RBUFLEN-7)
+/* Here the 7 is the nominal opbuf usage of write-n. */
+#define WRNMAX_NONSPI (S_OPBUFLEN-7)
+
 #ifdef FRSER_FEAT_NONSPI
 // Sys_bytes = stack + bss vars.
 #ifndef FRSER_SYS_BYTES
@@ -35,9 +44,21 @@
 #define RAM_BYTES (RAMEND-RAMSTART+1)
 /* The length of the operation buffer */
 #define S_OPBUFLEN (RAM_BYTES-FRSER_SYS_BYTES-UART_BUFLEN-UARTTX_BUFLEN)
+
+
+#ifdef FRSER_FEAT_SPI
+/* We need to handle the opcode manually if both SPI and not SPI... */
+#define DYN_WRNMAX
+#else
+/* If no SPI then based on opbuf. */
+#define WRNMAX WRNMAX_NONSPI
+#endif
+
 #else
 /* Fake. */
 #define S_OPBUFLEN 12
+/* Write-N never goes to opbuf, thus report based on UART buf. */
+#define WRNMAX WRNMAX_SPI
 #endif
 
 struct constanswer {
@@ -72,20 +93,16 @@ uint8_t get_last_op(void) {
 #define KBPSEC ((BYTERATE+512)/1024)
 #define RDNMAX (KBPSEC*1024)
 
-/* Report -4 for safety (atleast -1 because our buffer cant be filled 100%) */
-#define UART_RBUFLEN (UART_BUFLEN-4)
-
-/* 0xFF, 0xFF, 0xBF, 0x01 */
-
-const char PROGMEM ca_nop[1] = { S_ACK };
 const char PROGMEM ca_iface[3] = { S_ACK, 0x01, 0x00 };
-const char PROGMEM ca_bitmap[33] = { S_ACK, FRSER_BM_B0, FRSER_BM_B1, FRSER_BM_B2, FRSER_BM_B3 };
+const char PROGMEM ca_bitmap[33] = { S_ACK, FRSER_BM_B0, FRSER_BM_B1, FRSER_BM_B2, FRSER_BM_B3, 0 };
 const char PROGMEM ca_pgmname[17] = "\x06" FRSER_NAME; /* Small hack to include S_ACK in the name. */
 const char PROGMEM ca_serbuf[3] = { S_ACK, (UART_RBUFLEN)&0xFF, (UART_RBUFLEN>>8)&0xFF };
 const char PROGMEM ca_syncnop[2] = { S_NAK, S_ACK };
 
 const char PROGMEM ca_opbufsz[3] = { S_ACK, S_OPBUFLEN&0xFF, (S_OPBUFLEN>>8)&0xFF };
-const char PROGMEM ca_wrnlen[4] = { S_ACK, 0x00, 0x01, 0x00 };
+#ifndef DYN_WRNMAX
+const char PROGMEM ca_wrnlen[4] = { S_ACK, WRNMAX&0xFF, (WRNMAX>>8)&0xFF, 0 };
+#endif
 const char PROGMEM ca_rdnmaxlen[4] = { S_ACK, RDNMAX&0xFF, (RDNMAX>>8)&0xFF, (RDNMAX>>16)&0xFF };
 
 #ifndef FRSER_FEAT_DYNPROTO
@@ -98,7 +115,7 @@ const char PROGMEM ca_chipsize[2] = { S_ACK, FRSER_PARALLEL_BITS };
 
 /* Commands with a const answer cannot have parameters */
 const struct constanswer PROGMEM const_table[S_MAXCMD+1] = {
-	{ 1, ca_nop },		// NOP
+	{ 1, ca_iface },	// NOP
 	{ 3, ca_iface },	// IFACE V
 	{ 33, ca_bitmap },	// op bitmap
 	{ 17, ca_pgmname },	// programmer name
@@ -116,7 +133,11 @@ const struct constanswer PROGMEM const_table[S_MAXCMD+1] = {
 #endif
 
 	{ 3, ca_opbufsz },	// operation buffer size
+#ifdef DYN_WRNMAX
+	{ 0, NULL },
+#else
 	{ 4, ca_wrnlen },	// write-n max len
+#endif
 	{ 0, NULL },		// read byte
 	{ 0, NULL },		// read n
 	{ 0, NULL },		// init opbuf
@@ -180,100 +201,72 @@ static uint32_t buf2u24(uint8_t *buf) {
 static uint8_t opbuf[S_OPBUFLEN];
 static uint16_t opbuf_bytes = 0;
 
-static uint8_t opbuf_addbyte(uint8_t c) {
-	if (opbuf_bytes == S_OPBUFLEN) return 1;
-	opbuf[opbuf_bytes++] = c;
+static uint8_t opbuf_check(uint16_t addsz) {
+	if ((opbuf_bytes + addsz) > S_OPBUFLEN) {
+		return 1;
+	}
 	return 0;
 }
 
-
-static void do_cmd_opbuf_writeb(uint8_t *parbuf) {
-	if (opbuf_addbyte(OPBUF_WRITE1OP)) goto nakret;
-	if (opbuf_addbyte(parbuf[0])) goto nakret;
-	if (opbuf_addbyte(parbuf[1])) goto nakret;
-	if (opbuf_addbyte(parbuf[2])) goto nakret;
-	if (opbuf_addbyte(parbuf[3])) goto nakret;
+static void do_cmd_opbuf(uint8_t *parbuf, uint8_t op, uint8_t l) {
+	if (opbuf_check(l+1)) {
+		SEND(S_NAK);
+		return;
+	}
+	opbuf[opbuf_bytes++] = op;
+	for (uint8_t i=0;i<l;i++) opbuf[opbuf_bytes++] = parbuf[i];
 	SEND(S_ACK);
 	return;
-nakret:
-	SEND(S_NAK);
-	return;
+}
+
+static void do_cmd_opbuf_writeb(uint8_t *parbuf) {
+	do_cmd_opbuf(parbuf,OPBUF_WRITE1OP,4);
 }
 
 
 static void do_cmd_opbuf_delay(uint8_t *parbuf) {
-	if (opbuf_addbyte(OPBUF_DELAYOP)) goto nakret;
-	if (opbuf_addbyte(parbuf[0])) goto nakret;
-	if (opbuf_addbyte(parbuf[1])) goto nakret;
-	if (opbuf_addbyte(parbuf[2])) goto nakret;
-	if (opbuf_addbyte(parbuf[3])) goto nakret;
-	SEND(S_ACK);
-	return;
-nakret:
-	SEND(S_NAK);
-	return;
+	do_cmd_opbuf(parbuf,OPBUF_DELAYOP,4);
 }
 
 
 static void do_cmd_opbuf_poll_dly(uint8_t *parbuf) {
-	if (opbuf_addbyte(OPBUF_POLL_DLY)) goto nakret;
-	if (opbuf_addbyte(parbuf[0])) goto nakret;
-	if (opbuf_addbyte(parbuf[1])) goto nakret;
-	if (opbuf_addbyte(parbuf[2])) goto nakret;
-	if (opbuf_addbyte(parbuf[3])) goto nakret;
-	if (opbuf_addbyte(parbuf[4])) goto nakret;
-	if (opbuf_addbyte(parbuf[5])) goto nakret;
-	if (opbuf_addbyte(parbuf[6])) goto nakret;
-	if (opbuf_addbyte(parbuf[7])) goto nakret;
-	SEND(S_ACK);
-	return;
-nakret:
-	SEND(S_NAK);
-	return;
-	}
+	do_cmd_opbuf(parbuf,OPBUF_POLL_DLY,8);
+}
 
 
 static void do_cmd_opbuf_poll(uint8_t *parbuf) {
-	if (opbuf_addbyte(OPBUF_POLL)) goto nakret;
-	if (opbuf_addbyte(parbuf[0])) goto nakret;
-	if (opbuf_addbyte(parbuf[1])) goto nakret;
-	if (opbuf_addbyte(parbuf[2])) goto nakret;
-	if (opbuf_addbyte(parbuf[3])) goto nakret;
-	SEND(S_ACK);
-	return;
-nakret:
-	SEND(S_NAK);
-	return;
-	}
-
-
-static void do_cmd_opbuf_writen(void) {
-	uint8_t len;
-	uint8_t plen = 3;
-	uint8_t i;
-	len = RECEIVE();
-	RECEIVE();
-	RECEIVE();
-	if (opbuf_addbyte(OPBUF_WRITENOP)) goto nakret;
-	if (opbuf_addbyte(len)) goto nakret;
-	plen--; if (opbuf_addbyte(RECEIVE())) goto nakret;
-	plen--; if (opbuf_addbyte(RECEIVE())) goto nakret;
-	plen--; if (opbuf_addbyte(RECEIVE())) goto nakret;
-	for(;;) {
-		len--; if (opbuf_addbyte(RECEIVE())) goto nakret;
-		if (len == 0) break;
-	}
-	SEND(S_ACK);
-	return;
-
-nakret:
-	len += plen;
-	for(i=0;i<len;i++) RECEIVE();
-	SEND(S_NAK);
-	return;
-
+	do_cmd_opbuf(parbuf,OPBUF_POLL,4);
 }
 
+static void do_cmd_opbuf_writen(void) {
+	u16_u len;
+	uint16_t i;
+	len.b[0] = RECEIVE();
+	len.b[1] = RECEIVE();
+	/* Here if != 0, max exceeded by an order of magnitude.
+	 * Assume sync error and dont wait for that much data. */
+	if (RECEIVE()) {
+		SEND(S_NAK);
+		return;
+	}
+	uint16_t rlen = 3 + len.l;
+	/* 0 length write n is also invalid. */
+	if ((!len.l)||(opbuf_check(3+rlen))) {
+		for(i=0;i<rlen;i++) RECEIVE();
+		SEND(S_NAK);
+		return;
+	}
+	opbuf[opbuf_bytes++] = OPBUF_WRITENOP;
+	opbuf[opbuf_bytes++] = len.b[0];
+	opbuf[opbuf_bytes++] = len.b[1];
+	/* Address (3 bytes) + Data */
+	for (i=0;i<rlen;i++) opbuf[opbuf_bytes++] = RECEIVE();
+	SEND(S_ACK);
+	return;
+}
+
+
+static const uint8_t PROGMEM bit_mask_lut[8] = { 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80 };
 
 static void do_cmd_opbuf_exec(void) {
 	uint16_t readptr;
@@ -283,24 +276,23 @@ static void do_cmd_opbuf_exec(void) {
 		if (readptr >= opbuf_bytes) goto nakret;
 		if ((op == OPBUF_WRITE1OP)||(op==OPBUF_WRITENOP)) {
 			uint32_t addr;
-			uint8_t len,i;
+			u16_u len;
+			uint16_t i;
+			len.l = 1;
 			if (op==OPBUF_WRITENOP) {
-				len = opbuf[readptr++];
-				if (readptr >= opbuf_bytes) goto nakret;
-			} else {
-				len = 1;
+				len.b[0] = opbuf[readptr++];
+				len.b[1] = opbuf[readptr++];
 			}
 			addr = buf2u24(opbuf+readptr);
 			readptr += 3;
-			if (readptr >= opbuf_bytes) goto nakret;
+			if ((readptr+len.l) > opbuf_bytes) goto nakret;
 			for(i=0;;) {
 				uint8_t c;
 				c = opbuf[readptr++];
-				if (readptr > opbuf_bytes) goto nakret;
 				flash_write(addr,c);
 				addr++;
 				i++;
-				if (i==len) break;
+				if (i==len.l) break;
 			}
 			continue;
 		}
@@ -322,15 +314,16 @@ static void do_cmd_opbuf_exec(void) {
 			uint8_t details = opbuf[readptr++];
 			uint32_t addr = buf2u24(opbuf+readptr);
 			readptr += 3;
-			if (readptr > opbuf_bytes) goto nakret;
-			if (op == OPBUF_POLL_DLY ) {
+			if (op == OPBUF_POLL_DLY) {
 				usecs.b[0] = opbuf[readptr++];
 				usecs.b[1] = opbuf[readptr++];
 				usecs.b[2] = opbuf[readptr++];
 				usecs.b[3] = opbuf[readptr++];
-				if (readptr > opbuf_bytes) goto nakret;
 			}
-			uint8_t mask = 1 << (details&7);
+			if (readptr > opbuf_bytes) goto nakret;
+			/* For random inputs i might not have bothered with the LUT,
+			 * but because it is mostly 6 or 7 shifts i think the LUT is a win.  */
+			uint8_t mask = pgm_read_byte( &(bit_mask_lut[details&7]) );
 			if (details&0x10) {
 				/* toggle mode */
 			        tmp1 = flash_read(addr) & mask;
@@ -533,6 +526,20 @@ void frser_main(void) {
 			default:
 				SEND(S_NAK);
 				break;
+
+#ifdef DYN_WRNMAX
+			case S_CMD_Q_WRNMAXLEN:
+				SEND(S_ACK);
+				if (last_set_bus_types == CHIP_BUSTYPE_SPI) {
+					SEND(WRNMAX_SPI & 0xFF);
+					SEND(WRNMAX_SPI>>8);
+				} else {
+					SEND(WRNMAX_NONSPI & 0xFF);
+					SEND(WRNMAX_NONSPI>>8);
+				}
+				SEND(0);
+				break;
+#endif
 #ifdef FRSER_FEAT_NONSPI
 			case S_CMD_R_BYTE:
 				do_cmd_readbyte(parbuf);
