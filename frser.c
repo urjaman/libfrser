@@ -400,6 +400,7 @@ static void do_cmd_opbuf_init(void) {
 static void do_cmd_opbuf_exec(void) {
 	if (opbuf_delay_acc) udelay(opbuf_delay_acc);
 	opbuf_delay_acc = 0;
+	SEND(S_ACK);
 }
 #endif
 
