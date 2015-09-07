@@ -25,6 +25,9 @@
 /* Call this and frser owns your AVR. */
 void frser_main(void) __attribute__((noreturn));
 
+/* SPI operation needs this. */
+void frser_send_token(void);
+
 #ifdef FRSER_FEAT_LAST_OP
 uint8_t get_last_op(void);
 #endif

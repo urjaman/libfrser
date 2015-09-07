@@ -21,6 +21,7 @@
 #include "main.h"
 #include "spilib.h"
 #include "uart.h"
+#include "frser.h"
 
 /* This is just hardware-independent generic code to help with spi. */
 
@@ -54,7 +55,7 @@ static void spi_spiop_end(uint32_t rbytes) {
 
 void spi_spiop(uint32_t sbytes, uint32_t rbytes) {
 	spi_spiop_start(sbytes);
-	SEND(S_ACK);
+	frser_send_token();
 	spi_spiop_end(rbytes);
 }
 

@@ -33,8 +33,8 @@
 /* Maximum Write-N length..*/
 /* The 7 in SPI means cmd(1) + txamt(3) + rxamt(3) => 7 */
 #define WRNMAX_SPI (UART_RBUFLEN-7)
-/* Here the 7 is the nominal opbuf usage of write-n. */
-#define WRNMAX_NONSPI (S_OPBUFLEN-7)
+/* Here the 8 is the nominal opbuf usage of write-n. */
+#define WRNMAX_NONSPI (S_OPBUFLEN-8)
 
 #ifdef FRSER_FEAT_NONSPI
 // Sys_bytes = stack + bss vars.
@@ -93,7 +93,7 @@ uint8_t get_last_op(void) {
 #define KBPSEC ((BYTERATE+512)/1024)
 #define RDNMAX (KBPSEC*1024)
 
-const char PROGMEM ca_iface[3] = { S_ACK, 0x01, 0x00 };
+const char PROGMEM ca_iface[3] = { S_ACK, 0x02, 0x00 };
 const char PROGMEM ca_bitmap[33] = { S_ACK, FRSER_BM_B0, FRSER_BM_B1, FRSER_BM_B2, FRSER_BM_B3, 0 };
 const char PROGMEM ca_pgmname[17] = "\x06" FRSER_NAME; /* Small hack to include S_ACK in the name. */
 const char PROGMEM ca_serbuf[3] = { S_ACK, (UART_RBUFLEN)&0xFF, (UART_RBUFLEN>>8)&0xFF };
@@ -151,7 +151,7 @@ const struct constanswer PROGMEM const_table[S_MAXCMD+1] = {
 	{ 0, NULL },		// SPI operation
 	{ 0, NULL },		// SPI speed
 	{ 0, NULL },		// set output drivers
-	{ 1, ca_syncnop },	// JEDEC toggle rdy => NAK (discard that thing)
+	{ 0, NULL },		// query token
 	{ 0, NULL },		// Poll
 	{ 0, NULL }		// Poll w delay
 };
@@ -161,12 +161,12 @@ const uint8_t PROGMEM op2len[S_MAXCMD+1] = {
 	0x00, 0x00, 0x00,	/* NOP, iface, bitmap */
 	0x00, 0x00, 0x00,	/* progname, serbufsize, bustypes */
 	0x00, 0x00, 0x00,	/* chipsize, opbufsz, query-n maxlen */
-	0x03, 0x06, 0x00,	/* read byte, read n, init opbuf */
-	0x04, 0x00, 0x04,	/* write byte, write n, write delay */
+	0x04, 0x07, 0x00,	/* read byte, read n, init opbuf */
+	0x05, 0x00, 0x04,	/* write byte, write n, write delay */
 	0x00, 0x00, 0x00,	/* Exec opbuf, syncnop, max read-n */
 	0x01, 0x06, 0x04,	/* Set used bustype, SPI op, spi-speed */
-	0x01, 0x00, 0x04, 	/* output drivers, togglerdy(nakd), poll */
-	0x08			/* poll+delay */
+	0x01, 0x00, 0x05, 	/* output drivers, q_token, poll */
+	0x09			/* poll+delay */
 };
 
 #ifdef FRSER_FEAT_S_BUSTYPE
@@ -188,6 +188,23 @@ static uint32_t buf2u24(uint8_t *buf) {
 	u24.b[2] = buf[2];
 	u24.b[3] = 0;
 	return u24.l;
+}
+
+static uint32_t buf2u32(uint8_t *buf) {
+	u32_u u32;
+	u32.b[0] = buf[0];
+	u32.b[1] = buf[1];
+	u32.b[2] = buf[2];
+	u32.b[3] = buf[3];
+	return u32.l;
+}
+
+static uint8_t next_token;
+
+void frser_send_token(void) {
+	SEND(next_token);
+	next_token++;
+	if (!next_token) next_token = 0x81;
 }
 
 #ifdef FRSER_FEAT_NONSPI
@@ -215,12 +232,12 @@ static void do_cmd_opbuf(uint8_t *parbuf, uint8_t op, uint8_t l) {
 	}
 	opbuf[opbuf_bytes++] = op;
 	for (uint8_t i=0;i<l;i++) opbuf[opbuf_bytes++] = parbuf[i];
-	SEND(S_ACK);
+	frser_send_token();
 	return;
 }
 
 static void do_cmd_opbuf_writeb(uint8_t *parbuf) {
-	do_cmd_opbuf(parbuf,OPBUF_WRITE1OP,4);
+	do_cmd_opbuf(parbuf,OPBUF_WRITE1OP,5);
 }
 
 
@@ -230,12 +247,12 @@ static void do_cmd_opbuf_delay(uint8_t *parbuf) {
 
 
 static void do_cmd_opbuf_poll_dly(uint8_t *parbuf) {
-	do_cmd_opbuf(parbuf,OPBUF_POLL_DLY,8);
+	do_cmd_opbuf(parbuf,OPBUF_POLL_DLY,9);
 }
 
 
 static void do_cmd_opbuf_poll(uint8_t *parbuf) {
-	do_cmd_opbuf(parbuf,OPBUF_POLL,4);
+	do_cmd_opbuf(parbuf,OPBUF_POLL,5);
 }
 
 static void do_cmd_opbuf_writen(void) {
@@ -249,9 +266,9 @@ static void do_cmd_opbuf_writen(void) {
 		SEND(S_NAK);
 		return;
 	}
-	uint16_t rlen = 3 + len.l;
+	uint16_t rlen = 4 + len.l;
 	/* 0 length write n is also invalid. */
-	if ((!len.l)||(opbuf_check(3+rlen))) {
+	if ((!len.l)||(opbuf_check(4+rlen))) {
 		for(i=0;i<rlen;i++) RECEIVE();
 		SEND(S_NAK);
 		return;
@@ -259,9 +276,9 @@ static void do_cmd_opbuf_writen(void) {
 	opbuf[opbuf_bytes++] = OPBUF_WRITENOP;
 	opbuf[opbuf_bytes++] = len.b[0];
 	opbuf[opbuf_bytes++] = len.b[1];
-	/* Address (3 bytes) + Data */
+	/* Address (4 bytes) + Data */
 	for (i=0;i<rlen;i++) opbuf[opbuf_bytes++] = RECEIVE();
-	SEND(S_ACK);
+	frser_send_token();
 	return;
 }
 
@@ -283,8 +300,8 @@ static void do_cmd_opbuf_exec(void) {
 				len.b[0] = opbuf[readptr++];
 				len.b[1] = opbuf[readptr++];
 			}
-			addr = buf2u24(opbuf+readptr);
-			readptr += 3;
+			addr = buf2u32(opbuf+readptr);
+			readptr += 4;
 			if ((readptr+len.l) > opbuf_bytes) goto nakret;
 			for(i=0;;) {
 				uint8_t c;
@@ -312,8 +329,8 @@ static void do_cmd_opbuf_exec(void) {
 			u32_u usecs;
 			usecs.l = 0;
 			uint8_t details = opbuf[readptr++];
-			uint32_t addr = buf2u24(opbuf+readptr);
-			readptr += 3;
+			uint32_t addr = buf2u32(opbuf+readptr);
+			readptr += 4;
 			if (op == OPBUF_POLL_DLY) {
 				usecs.b[0] = opbuf[readptr++];
 				usecs.b[1] = opbuf[readptr++];
@@ -346,7 +363,7 @@ static void do_cmd_opbuf_exec(void) {
 		goto nakret;
 	}
 	opbuf_bytes = 0;
-	SEND(S_ACK);
+	frser_send_token();
 	return;
 nakret:
 	opbuf_bytes = 0;
@@ -363,8 +380,8 @@ static void do_cmd_opbuf_init(void) {
 static void do_cmd_readbyte(uint8_t *parbuf) {
 	uint8_t c;
 	uint32_t addr;
-	SEND(S_ACK);
-	addr = buf2u24(parbuf);
+	frser_send_token();
+	addr = buf2u32(parbuf);
 	c = flash_read(addr);
 	SEND(c);
 }
@@ -372,14 +389,13 @@ static void do_cmd_readbyte(uint8_t *parbuf) {
 static void do_cmd_readnbytes(uint8_t *parbuf) {
 	uint32_t addr;
 	uint32_t n;
-	SEND(S_ACK);
-	addr = buf2u24(parbuf);
-	n = buf2u24(parbuf+3);
-	if (n==0) n = ((uint32_t)1 << 24); /* Protocol detail, dont show it to flash_readn */
+	frser_send_token();
+	addr = buf2u32(parbuf);
+	n = buf2u24(parbuf+4);
 	flash_readn(addr,n);
 }
+
 #else /* FRSER_FEAT_NONSPI ^^ */
-static uint32_t opbuf_delay_acc = 0;
 
 static void do_cmd_opbuf_delay(uint8_t *parbuf) {
 	u32_u usecs;
@@ -388,19 +404,16 @@ static void do_cmd_opbuf_delay(uint8_t *parbuf) {
 	usecs.b[1] = parbuf[1];
 	usecs.b[2] = parbuf[2];
 	usecs.b[3] = parbuf[3];
-	opbuf_delay_acc += usecs.l;
-	SEND(S_ACK);
+	udelay(usecs.l);
+	frser_send_token();
 	return;
 }
 
 static void do_cmd_opbuf_init(void) {
-	opbuf_delay_acc = 0;
 }
 
 static void do_cmd_opbuf_exec(void) {
-	if (opbuf_delay_acc) udelay(opbuf_delay_acc);
-	opbuf_delay_acc = 0;
-	SEND(S_ACK);
+	frser_send_token();
 }
 #endif
 
@@ -420,10 +433,6 @@ static void do_cmd_spispeed(uint8_t* parbuf) {
 	hz.b[1] = parbuf[1];
 	hz.b[2] = parbuf[2];
 	hz.b[3] = parbuf[3];
-	if (hz.l==0) { /* I think this spec is stupid. /UR */
-		SEND(S_NAK);
-		return;
-	}
 	u32_u new_hz;
 	new_hz.l = spi_set_speed(hz.l);
 	SEND(S_ACK);
@@ -461,6 +470,7 @@ static void do_cmd_pin_state(uint8_t v) {
 
 
 void frser_main(void) {
+	next_token = 0x80; /* Booted. */
 #ifdef FRSER_FEAT_PIN_STATE
 	last_set_pin_state = 1;
 #endif
@@ -528,6 +538,11 @@ void frser_main(void) {
 				SEND(S_NAK);
 				break;
 
+			case S_CMD_Q_TOKEN:
+				SEND(S_ACK);
+				SEND(next_token);
+				break;
+
 #ifdef DYN_WRNMAX
 			case S_CMD_Q_WRNMAXLEN:
 				SEND(S_ACK);
@@ -570,7 +585,7 @@ void frser_main(void) {
 #endif
 
 			case S_CMD_O_INIT:
-				SEND(S_ACK);
+				frser_send_token();
 				do_cmd_opbuf_init();
 				/* Select protocol atleast once per flashrom invocation in
 				   order to detect change of chip between flashrom runs */

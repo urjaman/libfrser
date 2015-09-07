@@ -29,7 +29,7 @@
 #define S_CMD_O_SPIOP		0x13		/* Perform SPI operation.			*/
 #define S_CMD_S_SPI_FREQ	0x14		/* Set SPI clock frequency			*/
 #define S_CMD_S_PIN_STATE	0x15		/* Enable/disable output drivers		*/
-// #define S_CMD_O_TOGGLERDY	0x16		/* Write to opbuf: wait JEDEC toggle ready	*/
+#define S_CMD_Q_TOKEN		0x16		/* Request current next token.			*/
 #define S_CMD_O_POLL		0x17		/* Write to opbuf: poll (details in code/soon doc) */
 
 #define S_CMD_O_POLL_DLY	0x18		/* Write to opbuf: poll (details in code/soon doc) */
@@ -37,7 +37,7 @@
 /* The biggest valid command value */
 #define S_MAXCMD 0x18
 /* The maximum static length of parameters (poll_dly)) */
-#define S_MAXLEN 0x08
+#define S_MAXLEN 0x09
 
 /* "Library" Configuration Decisions - useful to have the command list above for reference with these */
 #include "frser-cfg.h"
@@ -45,7 +45,7 @@
 /* These are the commands that are always implemented */
 #define _FR_BM_B0_BASE 0xBF
 #define _FR_BM_B1_BASE 0xC9
-#define _FR_BM_B2_BASE 0x03
+#define _FR_BM_B2_BASE 0x43
 
 #if (defined FRSER_FEAT_PARALLEL) || (defined FRSER_FEAT_LPCFWH)
 #define FRSER_FEAT_NONSPI

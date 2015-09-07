@@ -43,9 +43,10 @@ static bool nibble_ready_sync(void) {
 	return true;
 }
 
-static void nibble_send_addr_24b(uint32_t addr) {
+static void nibble_send_addr_28b(uint32_t addr) {
 	u32_u a;
 	a.l = addr;
+	clocked_nibble_write(a.b[3]);
 	clocked_nibble_write_hi(a.b[2]);
 	clocked_nibble_write(a.b[2]);
 	clocked_nibble_write_hi(a.b[1]);
@@ -77,10 +78,10 @@ static void lpc_start(void) {
 
 
 static void lpc_send_addr(uint32_t addr) {
-	/* NOTE: Hard-coded uppest 8b. */
-	lpc_nibble_write(0xF);
-	clock_cycle();
-	nibble_send_addr_24b(addr);
+	u32_u a;
+	a.l = addr;
+	clocked_nibble_write_hi(a.b[3]);
+	nibble_send_addr_28b(addr);
 }
 
 int lpc_read_address(uint32_t addr) {
@@ -139,9 +140,7 @@ void fwh_cleanup(void) {
 #define fwh_start(v) nibble_start(v)
 
 static void fwh_send_imaddr(uint32_t addr) {
-	/* NOTE: hard-coded uppest 4b. */
-	fwh_nibble_write(0xF);
-	nibble_send_addr_24b(addr);
+	nibble_send_addr_28b(addr);
 }
 
 int fwh_read_address(uint32_t addr) {
