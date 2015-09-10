@@ -209,12 +209,6 @@ void frser_send_token(void) {
 
 #ifdef FRSER_FEAT_NONSPI
 
-#define OPBUF_WRITENOP 0x00
-#define OPBUF_WRITE1OP 0x01
-#define OPBUF_DELAYOP 0x02
-#define OPBUF_POLL 0x03
-#define OPBUF_POLL_DLY 0x04
-
 static uint8_t opbuf[S_OPBUFLEN];
 static uint16_t opbuf_bytes = 0;
 
@@ -237,22 +231,22 @@ static void do_cmd_opbuf(uint8_t *parbuf, uint8_t op, uint8_t l) {
 }
 
 static void do_cmd_opbuf_writeb(uint8_t *parbuf) {
-	do_cmd_opbuf(parbuf,OPBUF_WRITE1OP,5);
+	do_cmd_opbuf(parbuf,S_CMD_O_WRITEB,5);
 }
 
 
 static void do_cmd_opbuf_delay(uint8_t *parbuf) {
-	do_cmd_opbuf(parbuf,OPBUF_DELAYOP,4);
+	do_cmd_opbuf(parbuf,S_CMD_O_DELAY,4);
 }
 
 
 static void do_cmd_opbuf_poll_dly(uint8_t *parbuf) {
-	do_cmd_opbuf(parbuf,OPBUF_POLL_DLY,9);
+	do_cmd_opbuf(parbuf,S_CMD_O_POLL_DLY,9);
 }
 
 
 static void do_cmd_opbuf_poll(uint8_t *parbuf) {
-	do_cmd_opbuf(parbuf,OPBUF_POLL,5);
+	do_cmd_opbuf(parbuf,S_CMD_O_POLL,5);
 }
 
 static void do_cmd_opbuf_writen(void) {
@@ -273,7 +267,7 @@ static void do_cmd_opbuf_writen(void) {
 		SEND(S_NAK);
 		return;
 	}
-	opbuf[opbuf_bytes++] = OPBUF_WRITENOP;
+	opbuf[opbuf_bytes++] = S_CMD_O_WRITEN;
 	opbuf[opbuf_bytes++] = len.b[0];
 	opbuf[opbuf_bytes++] = len.b[1];
 	/* Address (4 bytes) + Data */
@@ -285,82 +279,86 @@ static void do_cmd_opbuf_writen(void) {
 
 static const uint8_t PROGMEM bit_mask_lut[8] = { 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80 };
 
+static uint16_t do_exec_opbuf_op(uint8_t* buf, uint16_t dlen)
+{
+	uint16_t readptr = 0;
+	uint8_t op;
+	op = buf[readptr++];
+	if (readptr >= dlen) goto nakret;
+	if ((op == S_CMD_O_WRITEB)||(op==S_CMD_O_WRITEN)) {
+		uint32_t addr;
+		u16_u len;
+		uint16_t i;
+		len.l = 1;
+		if (op==S_CMD_O_WRITEN) {
+			len.b[0] = buf[readptr++];
+			len.b[1] = buf[readptr++];
+		}
+		addr = buf2u32(buf+readptr);
+		readptr += 4;
+		if ((readptr+len.l) > dlen) goto nakret;
+		for(i=0;;) {
+			uint8_t c;
+			c = buf[readptr++];
+			flash_write(addr,c);
+			addr++;
+			i++;
+			if (i==len.l) break;
+		}
+		goto ret;
+	}
+	if (op == S_CMD_O_DELAY) {
+		uint32_t usecs = buf2u32(buf+readptr);
+		readptr += 4;
+		if (readptr > dlen) goto nakret;
+		udelay(usecs);
+		goto ret;
+	}
+	if ((op == S_CMD_O_POLL)||(op == S_CMD_O_POLL_DLY)) {
+		uint8_t tmp1, tmp2;
+		uint32_t i = 0;
+		uint32_t usecs = 0;
+		uint8_t details = buf[readptr++];
+		uint32_t addr = buf2u32(buf+readptr);
+		readptr += 4;
+		if (op == S_CMD_O_POLL_DLY) {
+			usecs = buf2u32(buf+readptr);
+			readptr += 4;
+		}
+		if (readptr > dlen) goto nakret;
+		/* For random inputs i might not have bothered with the LUT,
+		 * but because it is mostly 6 or 7 shifts i think the LUT is a win.  */
+		uint8_t mask = pgm_read_byte( &(bit_mask_lut[details&7]) );
+		if (details&0x10) {
+			/* toggle mode */
+			tmp1 = flash_read(addr) & mask;
+		} else {
+			/* data wait mode */
+			tmp1 = details&0x20 ? mask : 0;
+		}
+	        while (i++ < 0xFFFFFFF) {
+			if (usecs) udelay(usecs);
+			tmp2 = flash_read(addr) & mask;
+			if (tmp1 == tmp2) break;
+
+			/* Only move in toggle mode */
+			if (details&0x10) tmp1 = tmp2;
+		}
+		goto ret;
+	}
+
+nakret: /* Make error certain */
+	if (readptr <= dlen) readptr = dlen+1;
+ret:
+	return readptr;
+}
+
+
 static void do_cmd_opbuf_exec(void) {
 	uint16_t readptr;
 	for(readptr=0;readptr<opbuf_bytes;) {
-		uint8_t op;
-		op = opbuf[readptr++];
-		if (readptr >= opbuf_bytes) goto nakret;
-		if ((op == OPBUF_WRITE1OP)||(op==OPBUF_WRITENOP)) {
-			uint32_t addr;
-			u16_u len;
-			uint16_t i;
-			len.l = 1;
-			if (op==OPBUF_WRITENOP) {
-				len.b[0] = opbuf[readptr++];
-				len.b[1] = opbuf[readptr++];
-			}
-			addr = buf2u32(opbuf+readptr);
-			readptr += 4;
-			if ((readptr+len.l) > opbuf_bytes) goto nakret;
-			for(i=0;;) {
-				uint8_t c;
-				c = opbuf[readptr++];
-				flash_write(addr,c);
-				addr++;
-				i++;
-				if (i==len.l) break;
-			}
-			continue;
-		}
-		if (op == OPBUF_DELAYOP) {
-			u32_u usecs;
-			usecs.b[0] = opbuf[readptr++];
-			usecs.b[1] = opbuf[readptr++];
-			usecs.b[2] = opbuf[readptr++];
-			usecs.b[3] = opbuf[readptr++];
-			if (readptr > opbuf_bytes) goto nakret;
-			udelay(usecs.l);
-			continue;
-		}
-		if ((op == OPBUF_POLL)||(op == OPBUF_POLL_DLY)) {
-			uint8_t tmp1, tmp2;
-			uint32_t i = 0;
-			u32_u usecs;
-			usecs.l = 0;
-			uint8_t details = opbuf[readptr++];
-			uint32_t addr = buf2u32(opbuf+readptr);
-			readptr += 4;
-			if (op == OPBUF_POLL_DLY) {
-				usecs.b[0] = opbuf[readptr++];
-				usecs.b[1] = opbuf[readptr++];
-				usecs.b[2] = opbuf[readptr++];
-				usecs.b[3] = opbuf[readptr++];
-			}
-			if (readptr > opbuf_bytes) goto nakret;
-			/* For random inputs i might not have bothered with the LUT,
-			 * but because it is mostly 6 or 7 shifts i think the LUT is a win.  */
-			uint8_t mask = pgm_read_byte( &(bit_mask_lut[details&7]) );
-			if (details&0x10) {
-				/* toggle mode */
-			        tmp1 = flash_read(addr) & mask;
-			} else {
-				/* data wait mode */
-				tmp1 = details&0x20 ? mask : 0;
-			}
-		        while (i++ < 0xFFFFFFF) {
-		                if (usecs.l) udelay(usecs.l);
-		                tmp2 = flash_read(addr) & mask;
-                		if (tmp1 == tmp2) {
-		                        break;
-                		}
-                		/* Only move in toggle mode */
-		                if (details&0x10) tmp1 = tmp2;
-        		}
-			continue;
-		}
-
-		goto nakret;
+		readptr += do_exec_opbuf_op(opbuf+readptr,opbuf_bytes - readptr);
+		if (readptr > opbuf_bytes) goto nakret;
 	}
 	opbuf_bytes = 0;
 	frser_send_token();
