@@ -93,11 +93,11 @@ uint8_t get_last_op(void) {
 #define KBPSEC ((BYTERATE+512)/1024)
 #define RDNMAX (KBPSEC*1024)
 
-const char PROGMEM ca_iface[3] = { S_ACK, 0x02, 0x00 };
+/* Combined answer, substrings of which are used for nop, interface, and syncnop. */
+const char PROGMEM ca_combi[4] = { S_NAK, S_ACK, 0x02, 0x00 };
 const char PROGMEM ca_bitmap[33] = { S_ACK, FRSER_BM_B0, FRSER_BM_B1, FRSER_BM_B2, FRSER_BM_B3, 0 };
 const char PROGMEM ca_pgmname[17] = "\x06" FRSER_NAME; /* Small hack to include S_ACK in the name. */
 const char PROGMEM ca_serbuf[3] = { S_ACK, (UART_RBUFLEN)&0xFF, (UART_RBUFLEN>>8)&0xFF };
-const char PROGMEM ca_syncnop[2] = { S_NAK, S_ACK };
 
 const char PROGMEM ca_opbufsz[3] = { S_ACK, S_OPBUFLEN&0xFF, (S_OPBUFLEN>>8)&0xFF };
 #ifndef DYN_WRNMAX
@@ -115,8 +115,8 @@ const char PROGMEM ca_chipsize[2] = { S_ACK, FRSER_PARALLEL_BITS };
 
 /* Commands with a const answer cannot have parameters */
 const struct constanswer PROGMEM const_table[S_MAXCMD+1] = {
-	{ 1, ca_iface },	// NOP
-	{ 3, ca_iface },	// IFACE V
+	{ 1, ca_combi+1 },	// NOP
+	{ 3, ca_combi+1 },	// IFACE V
 	{ 33, ca_bitmap },	// op bitmap
 	{ 17, ca_pgmname },	// programmer name
 	{ 3, ca_serbuf },	// serial buffer size
@@ -145,7 +145,7 @@ const struct constanswer PROGMEM const_table[S_MAXCMD+1] = {
 	{ 0, NULL },		// opbuf, write-n
 	{ 0, NULL },		// opbuf, delay
 	{ 0, NULL },		// exec opbuf
-	{ 2, ca_syncnop },	// sync nop
+	{ 2, ca_combi },	// sync nop
 	{ 4, ca_rdnmaxlen },	// Read-n maximum len
 	{ 0, NULL },		// Set bustype
 	{ 0, NULL },		// SPI operation
@@ -153,7 +153,9 @@ const struct constanswer PROGMEM const_table[S_MAXCMD+1] = {
 	{ 0, NULL },		// set output drivers
 	{ 0, NULL },		// query token
 	{ 0, NULL },		// Poll
-	{ 0, NULL }		// Poll w delay
+	{ 0, NULL },		// Poll w delay
+	{ 0, NULL },		// set ext'd write-n sequence
+	{ 0, NULL }		// opbuf, ext'd write-n
 };
 
 const uint8_t PROGMEM op2len[S_MAXCMD+1] = {
@@ -166,7 +168,7 @@ const uint8_t PROGMEM op2len[S_MAXCMD+1] = {
 	0x00, 0x00, 0x00,	/* Exec opbuf, syncnop, max read-n */
 	0x01, 0x06, 0x04,	/* Set used bustype, SPI op, spi-speed */
 	0x01, 0x00, 0x05, 	/* output drivers, q_token, poll */
-	0x09			/* poll+delay */
+	0x09, 0x00, 0x00,	/* poll+delay, extwrite_seq, extwrite-n */
 };
 
 #ifdef FRSER_FEAT_S_BUSTYPE
@@ -180,7 +182,6 @@ static uint8_t last_set_bus_types;
 static uint8_t last_set_pin_state;
 #endif
 
-
 static uint32_t buf2u24(uint8_t *buf) {
 	u32_u u24;
 	u24.b[0] = buf[0];
@@ -190,24 +191,31 @@ static uint32_t buf2u24(uint8_t *buf) {
 	return u24.l;
 }
 
+static uint8_t next_token;
+
+void frser_send_token(void) {
+	uint8_t s = next_token;
+	next_token++;
+	if (!next_token) next_token = 0x81;
+	SEND(s);
+}
+
+#ifdef FRSER_FEAT_NONSPI
+
 static uint32_t buf2u32(uint8_t *buf) {
+#ifdef __AVR__
+	/* AVR has no alignment requirements and the gcc makes better code like this. */
+	return *(uint32_t*)buf;
+#else
+	/* Other archs could have alignment traps. */
 	u32_u u32;
 	u32.b[0] = buf[0];
 	u32.b[1] = buf[1];
 	u32.b[2] = buf[2];
 	u32.b[3] = buf[3];
 	return u32.l;
+#endif
 }
-
-static uint8_t next_token;
-
-void frser_send_token(void) {
-	SEND(next_token);
-	next_token++;
-	if (!next_token) next_token = 0x81;
-}
-
-#ifdef FRSER_FEAT_NONSPI
 
 static uint8_t opbuf[S_OPBUFLEN];
 static uint16_t opbuf_bytes = 0;
@@ -230,26 +238,21 @@ static void do_cmd_opbuf(uint8_t *parbuf, uint8_t op, uint8_t l) {
 	return;
 }
 
-static void do_cmd_opbuf_writeb(uint8_t *parbuf) {
-	do_cmd_opbuf(parbuf,S_CMD_O_WRITEB,5);
+static void do_cmd_opbuf_ew_seq(void) {
+	uint8_t sl = RECEIVE(); /* Length of params (including itself). */
+	if (opbuf_check(sl+2)) {
+		SEND(S_NAK);
+		for (uint8_t i=0;i<sl;i++) RECEIVE();
+		return;
+	}
+	opbuf[opbuf_bytes++] = S_CMD_O_EXTWRITE_SEQ;
+	opbuf[opbuf_bytes++] = sl;
+	for (uint8_t i=0;i<sl;i++) opbuf[opbuf_bytes++] = RECEIVE();
+	frser_send_token();
+	return;
 }
 
-
-static void do_cmd_opbuf_delay(uint8_t *parbuf) {
-	do_cmd_opbuf(parbuf,S_CMD_O_DELAY,4);
-}
-
-
-static void do_cmd_opbuf_poll_dly(uint8_t *parbuf) {
-	do_cmd_opbuf(parbuf,S_CMD_O_POLL_DLY,9);
-}
-
-
-static void do_cmd_opbuf_poll(uint8_t *parbuf) {
-	do_cmd_opbuf(parbuf,S_CMD_O_POLL,5);
-}
-
-static void do_cmd_opbuf_writen(void) {
+static void do_cmd_opbuf_writen(uint8_t op) {
 	u16_u len;
 	uint16_t i;
 	len.b[0] = RECEIVE();
@@ -263,11 +266,11 @@ static void do_cmd_opbuf_writen(void) {
 	uint16_t rlen = 4 + len.l;
 	/* 0 length write n is also invalid. */
 	if ((!len.l)||(opbuf_check(4+rlen))) {
-		for(i=0;i<rlen;i++) RECEIVE();
 		SEND(S_NAK);
+		for(i=0;i<rlen;i++) RECEIVE();
 		return;
 	}
-	opbuf[opbuf_bytes++] = S_CMD_O_WRITEN;
+	opbuf[opbuf_bytes++] = op;
 	opbuf[opbuf_bytes++] = len.b[0];
 	opbuf[opbuf_bytes++] = len.b[1];
 	/* Address (4 bytes) + Data */
@@ -279,86 +282,178 @@ static void do_cmd_opbuf_writen(void) {
 
 static const uint8_t PROGMEM bit_mask_lut[8] = { 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80 };
 
-static uint16_t do_exec_opbuf_op(uint8_t* buf, uint16_t dlen)
-{
-	uint16_t readptr = 0;
-	uint8_t op;
-	op = buf[readptr++];
-	if (readptr >= dlen) goto nakret;
-	if ((op == S_CMD_O_WRITEB)||(op==S_CMD_O_WRITEN)) {
-		uint32_t addr;
-		u16_u len;
-		uint16_t i;
-		len.l = 1;
-		if (op==S_CMD_O_WRITEN) {
-			len.b[0] = buf[readptr++];
-			len.b[1] = buf[readptr++];
-		}
-		addr = buf2u32(buf+readptr);
-		readptr += 4;
-		if ((readptr+len.l) > dlen) goto nakret;
-		for(i=0;;) {
-			uint8_t c;
-			c = buf[readptr++];
-			flash_write(addr,c);
-			addr++;
-			i++;
-			if (i==len.l) break;
-		}
-		goto ret;
+static void do_exec_poll(uint8_t details, uint8_t mask, uint32_t addr, uint32_t usecs) {
+	uint8_t tmp1, tmp2;
+	uint32_t i = 0;
+	if (details&0x10) {
+		/* toggle mode */
+		tmp1 = flash_read(addr) & mask;
+	} else {
+		/* data wait mode */
+		tmp1 = details&0x20 ? mask : 0;
 	}
-	if (op == S_CMD_O_DELAY) {
-		uint32_t usecs = buf2u32(buf+readptr);
-		readptr += 4;
-		if (readptr > dlen) goto nakret;
-		udelay(usecs);
-		goto ret;
-	}
-	if ((op == S_CMD_O_POLL)||(op == S_CMD_O_POLL_DLY)) {
-		uint8_t tmp1, tmp2;
-		uint32_t i = 0;
-		uint32_t usecs = 0;
-		uint8_t details = buf[readptr++];
-		uint32_t addr = buf2u32(buf+readptr);
-		readptr += 4;
-		if (op == S_CMD_O_POLL_DLY) {
-			usecs = buf2u32(buf+readptr);
-			readptr += 4;
-		}
-		if (readptr > dlen) goto nakret;
-		/* For random inputs i might not have bothered with the LUT,
-		 * but because it is mostly 6 or 7 shifts i think the LUT is a win.  */
-		uint8_t mask = pgm_read_byte( &(bit_mask_lut[details&7]) );
-		if (details&0x10) {
-			/* toggle mode */
-			tmp1 = flash_read(addr) & mask;
-		} else {
-			/* data wait mode */
-			tmp1 = details&0x20 ? mask : 0;
-		}
-	        while (i++ < 0xFFFFFFF) {
-			if (usecs) udelay(usecs);
-			tmp2 = flash_read(addr) & mask;
-			if (tmp1 == tmp2) break;
-
-			/* Only move in toggle mode */
-			if (details&0x10) tmp1 = tmp2;
-		}
-		goto ret;
+        while (i++ < 0xFFFFFFF) {
+		if (usecs) udelay(usecs);
+		tmp2 = flash_read(addr) & mask;
+		if (tmp1 == tmp2) break;
+		/* Only move in toggle mode */
+		if (details&0x10) tmp1 = tmp2;
 	}
 
-nakret: /* Make error certain */
-	if (readptr <= dlen) readptr = dlen+1;
-ret:
-	return readptr;
 }
 
+static uint8_t do_exec_opbuf_extwrite(uint8_t *ewsq, uint32_t addr, uint8_t *buf, uint16_t dlen) {
+	/* Hello for anybody following a comment from gcc bugzilla ... I ended up changing
+	 * the code to be a bit more 8-bit-oriented instead of pointers galore, but IIRC
+	 * that load of usecs variable still causes the madness X ptr stuff... */
+	uint8_t al = *ewsq++;
+	for (uint16_t i=0;i<dlen;i++,addr++) {
+		uint8_t c = *buf++;
+		uint8_t n;
+		for (n=0;n<al;) {
+			uint8_t op = ewsq[n++];
+			uint8_t rop = op&0x3F;
+			if (rop==S_CMD_O_WRITEB) {
+				uint32_t ra;
+				uint8_t rc;
+				if (op & 0x80) {
+					ra = addr;
+				} else {
+					ra = buf2u32(ewsq+n);
+					n += 4;
+				}
+				if (op & 0x40) {
+					rc = c;
+				} else {
+					rc = ewsq[n++];
+				}
+				flash_write(ra,rc);
+				continue;
+			}
+			if (rop==S_CMD_O_DELAY) {
+				udelay(buf2u32(ewsq+n));
+				n += 4;
+				continue;
+			}
+			if ((rop==S_CMD_O_POLL)||(rop==S_CMD_O_POLL_DLY)) {
+				uint8_t details = ewsq[n++];
+				uint8_t mask = pgm_read_byte( &(bit_mask_lut[details&7]) );
+				uint32_t ra = addr;
+				uint32_t usecs = 0;
+				if ((op & 0x40)&&(!(details & 0x10))) { // data poll variable
+					if (c & mask) {
+						details |= 0x20;
+					} else {
+						details &= ~0x20;
+					}
+				}
+				if (!(op & 0x80)) {
+					ra = buf2u32(ewsq+n);
+					n += 4;
+				}
+				if (rop == S_CMD_O_POLL_DLY) {
+					usecs = buf2u32(ewsq+n);
+					n += 4;
+				}
+				do_exec_poll(details,mask,ra,usecs);
+				continue;
+			}
+			return 1;
+		}
+		if (n>al) {
+			return 1;
+		}
+	}
+	return 0;
+}
 
 static void do_cmd_opbuf_exec(void) {
+	uint8_t * ewsq = 0;
 	uint16_t readptr;
 	for(readptr=0;readptr<opbuf_bytes;) {
-		readptr += do_exec_opbuf_op(opbuf+readptr,opbuf_bytes - readptr);
-		if (readptr > opbuf_bytes) goto nakret;
+		uint8_t op;
+		op = opbuf[readptr++];
+		if (readptr >= opbuf_bytes) goto nakret;
+		if ((op == S_CMD_O_WRITEB)||(op==S_CMD_O_WRITEN)) {
+			uint32_t addr;
+			u16_u len;
+			uint16_t i;
+			len.l = 1;
+			if (op==S_CMD_O_WRITEN) {
+				len.b[0] = opbuf[readptr++];
+				len.b[1] = opbuf[readptr++];
+			}
+			addr = buf2u32(opbuf+readptr);
+			readptr += 4;
+			if ((readptr+len.l) > opbuf_bytes) {
+				goto nakret;
+			}
+			for(i=0;;) {
+				uint8_t c;
+				c = opbuf[readptr++];
+				flash_write(addr,c);
+				addr++;
+				i++;
+				if (i==len.l) break;
+			}
+			continue;
+		}
+		if (op == S_CMD_O_DELAY) {
+			uint32_t usecs = buf2u32(opbuf+readptr);
+			readptr += 4;
+			if (readptr > opbuf_bytes) {
+				goto nakret;
+			}
+			udelay(usecs);
+			continue;
+		}
+		if ((op == S_CMD_O_POLL)||(op == S_CMD_O_POLL_DLY)) {
+			uint32_t usecs = 0;
+			uint8_t details = opbuf[readptr++];
+			uint32_t addr = buf2u32(opbuf+readptr);
+			readptr += 4;
+			if (op == S_CMD_O_POLL_DLY) {
+				usecs = buf2u32(opbuf+readptr);
+				readptr += 4;
+			}
+			if (readptr > opbuf_bytes) {
+				goto nakret;
+			}
+			/* For random inputs i might not have bothered with the LUT,
+			 * but because it is mostly 6 or 7 shifts i think the LUT is a win.  */
+			uint8_t mask = pgm_read_byte( &(bit_mask_lut[details&7]) );
+			do_exec_poll(details, mask, addr, usecs);
+			continue;
+		}
+		if (op == S_CMD_O_EXTWRITEN) {
+			uint32_t addr;
+			u16_u len;
+			if (!ewsq) {
+				goto nakret;
+			}
+			len.b[0] = opbuf[readptr++];
+			len.b[1] = opbuf[readptr++];
+			addr = buf2u32(opbuf+readptr);
+			readptr += 4;
+			if ((readptr+len.l) > opbuf_bytes) {
+				goto nakret;
+			}
+			if (do_exec_opbuf_extwrite(ewsq, addr, opbuf+readptr, len.l)) goto nakret;
+			readptr += len.l;
+			continue;
+		}
+		if (op == S_CMD_O_EXTWRITE_SEQ) {
+			ewsq = opbuf + readptr;
+			if (!(*ewsq)) {
+				goto nakret;
+			}
+			readptr += (*ewsq) + 1;
+			if (readptr > opbuf_bytes) {
+				goto nakret;
+			}
+			continue;
+		}
+		goto nakret;
 	}
 	opbuf_bytes = 0;
 	frser_send_token();
@@ -454,6 +549,8 @@ static void do_cmd_set_proto(uint8_t v) {
 	last_set_bus_types = v;
 #endif
 }
+
+
 
 #ifdef FRSER_FEAT_PIN_STATE
 static void do_cmd_pin_state(uint8_t v) {
@@ -561,18 +658,27 @@ void frser_main(void) {
 			case S_CMD_R_NBYTES:
 				do_cmd_readnbytes(parbuf);
 				break;
-			case S_CMD_O_WRITEB:
-				do_cmd_opbuf_writeb(parbuf);
+
+			case S_CMD_O_EXTWRITE_SEQ:
+				do_cmd_opbuf_ew_seq();
 				break;
+
+			case S_CMD_O_EXTWRITEN:
 			case S_CMD_O_WRITEN:
-				do_cmd_opbuf_writen();
+				do_cmd_opbuf_writen(op);
 				break;
+
+			case S_CMD_O_WRITEB:
+			case S_CMD_O_DELAY:
 			case S_CMD_O_POLL:
-				do_cmd_opbuf_poll(parbuf);
-				break;
 			case S_CMD_O_POLL_DLY:
-				do_cmd_opbuf_poll_dly(parbuf);
+				do_cmd_opbuf(parbuf,op,p_len);
 				break;
+#else
+			case S_CMD_O_DELAY:
+				do_cmd_opbuf_delay(parbuf);
+				break;
+
 #endif
 
 #ifdef FRSER_FEAT_DYNPROTO
@@ -590,9 +696,6 @@ void frser_main(void) {
 				do_cmd_set_proto(last_set_bus_types);
 				break;
 
-			case S_CMD_O_DELAY:
-				do_cmd_opbuf_delay(parbuf);
-				break;
 			case S_CMD_O_EXEC:
 				do_cmd_opbuf_exec();
 				break;

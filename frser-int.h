@@ -30,12 +30,14 @@
 #define S_CMD_S_SPI_FREQ	0x14		/* Set SPI clock frequency			*/
 #define S_CMD_S_PIN_STATE	0x15		/* Enable/disable output drivers		*/
 #define S_CMD_Q_TOKEN		0x16		/* Request current next token.			*/
-#define S_CMD_O_POLL		0x17		/* Write to opbuf: poll (details in code/soon doc) */
+#define S_CMD_O_POLL		0x17		/* Write to opbuf: poll (details in doc) */
 
-#define S_CMD_O_POLL_DLY	0x18		/* Write to opbuf: poll (details in code/soon doc) */
+#define S_CMD_O_POLL_DLY	0x18		/* Write to opbuf: poll (details in doc) */
+#define S_CMD_O_EXTWRITE_SEQ	0x19		/* Write to opbuf: set ext'd write-n sequence (doc) */
+#define S_CMD_O_EXTWRITEN	0x1A		/* Write to opbuf: ext'd write-n */
 
 /* The biggest valid command value */
-#define S_MAXCMD 0x18
+#define S_MAXCMD 0x1A
 /* The maximum static length of parameters (poll_dly)) */
 #define S_MAXLEN 0x09
 
@@ -44,7 +46,7 @@
 
 /* These are the commands that are always implemented */
 #define _FR_BM_B0_BASE 0xBF
-#define _FR_BM_B1_BASE 0xC9
+#define _FR_BM_B1_BASE 0x49
 #define _FR_BM_B2_BASE 0x43
 
 #if (defined FRSER_FEAT_PARALLEL) || (defined FRSER_FEAT_LPCFWH)
@@ -58,9 +60,9 @@
 #endif
 
 #ifdef FRSER_FEAT_NONSPI
-#define _FR_BM_B1_ADD0 0x36
+#define _FR_BM_B1_ADD0 0xB6
 #define _FR_BM_B2_ADD0 0x80
-#define _FR_BM_B3_BASE 0x01
+#define _FR_BM_B3_BASE 0x07
 #else
 #define _FR_BM_B1_ADD0 0
 #define _FR_BM_B2_ADD0 0
