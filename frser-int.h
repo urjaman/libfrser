@@ -35,9 +35,10 @@
 #define S_CMD_O_POLL_DLY	0x18		/* Write to opbuf: poll (details in doc) */
 #define S_CMD_O_EXTWRITE_SEQ	0x19		/* Write to opbuf: set ext'd write-n sequence (doc) */
 #define S_CMD_O_EXTWRITEN	0x1A		/* Write to opbuf: ext'd write-n */
+#define S_CMD_Q_DBGOUT		0x1B		/* Query for any debug output */
 
 /* The biggest valid command value */
-#define S_MAXCMD 0x1A
+#define S_MAXCMD 0x1B
 /* The maximum static length of parameters (poll_dly)) */
 #define S_MAXLEN 0x09
 
@@ -67,6 +68,12 @@
 #define _FR_BM_B1_ADD0 0
 #define _FR_BM_B2_ADD0 0
 #define _FR_BM_B3_BASE 0
+#endif
+
+#ifdef FRSER_FEAT_DPRINTF
+#define _FR_BM_B3_ADD0 0x08
+#else
+#define _FR_BM_B3_ADD0 0
 #endif
 
 #if (defined FRSER_FEAT_SPI) || (defined FRSER_FEAT_LPCFWH)
@@ -99,7 +106,7 @@
 #define FRSER_BM_B0 (_FR_BM_B0_BASE | _FR_BM_B0_ADD0)
 #define FRSER_BM_B1 (_FR_BM_B1_BASE | _FR_BM_B1_ADD0)
 #define FRSER_BM_B2 (_FR_BM_B2_BASE | _FR_BM_B2_ADD0 | _FR_BM_B2_ADD1 | _FR_BM_B2_ADD2 | _FR_BM_B2_ADD3)
-#define FRSER_BM_B3 (_FR_BM_B3_BASE)
+#define FRSER_BM_B3 (_FR_BM_B3_BASE | _FR_BM_B3_ADD0)
 
 #include <stdint.h>
 

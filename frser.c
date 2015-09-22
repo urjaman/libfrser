@@ -26,6 +26,7 @@
 #include "udelay.h"
 #include "frser.h"
 #include "typeu.h"
+#include "dxprint.h"
 
 /* Report -4 for safety (atleast -1 because our buffer cant be filled 100%) */
 #define UART_RBUFLEN (UART_BUFLEN-4)
@@ -43,7 +44,7 @@
 #endif
 #define RAM_BYTES (RAMEND-RAMSTART+1)
 /* The length of the operation buffer */
-#define S_OPBUFLEN (RAM_BYTES-FRSER_SYS_BYTES-UART_BUFLEN-UARTTX_BUFLEN)
+#define S_OPBUFLEN (RAM_BYTES-FRSER_SYS_BYTES-UART_BUFLEN-UARTTX_BUFLEN-(DXP_BUFSZ * sizeof(uintptr_t)))
 
 
 #ifdef FRSER_FEAT_SPI
@@ -155,7 +156,8 @@ const struct constanswer PROGMEM const_table[S_MAXCMD+1] = {
 	{ 0, NULL },		// Poll
 	{ 0, NULL },		// Poll w delay
 	{ 0, NULL },		// set ext'd write-n sequence
-	{ 0, NULL }		// opbuf, ext'd write-n
+	{ 0, NULL },		// opbuf, ext'd write-n
+	{ 0, NULL }		// dbgout
 };
 
 const uint8_t PROGMEM op2len[S_MAXCMD+1] = {
@@ -169,6 +171,7 @@ const uint8_t PROGMEM op2len[S_MAXCMD+1] = {
 	0x01, 0x06, 0x04,	/* Set used bustype, SPI op, spi-speed */
 	0x01, 0x00, 0x05, 	/* output drivers, q_token, poll */
 	0x09, 0x00, 0x00,	/* poll+delay, extwrite_seq, extwrite-n */
+	0x00
 };
 
 #ifdef FRSER_FEAT_S_BUSTYPE
@@ -222,6 +225,7 @@ static uint16_t opbuf_bytes = 0;
 
 static uint8_t opbuf_check(uint16_t addsz) {
 	if ((opbuf_bytes + addsz) > S_OPBUFLEN) {
+		dprintf("out of opbuf\r\n");
 		return 1;
 	}
 	return 0;
@@ -260,6 +264,7 @@ static void do_cmd_opbuf_writen(uint8_t op) {
 	/* Here if != 0, max exceeded by an order of magnitude.
 	 * Assume sync error and dont wait for that much data. */
 	if (RECEIVE()) {
+		dprintf("silly write-n\r\n");
 		SEND(S_NAK);
 		return;
 	}
@@ -358,9 +363,11 @@ static uint8_t do_exec_opbuf_extwrite(uint8_t *ewsq, uint32_t addr, uint8_t *buf
 				do_exec_poll(details,mask,ra,usecs);
 				continue;
 			}
+			dprintf("unkown op 0x%02X in ewsq\r\n",op);
 			return 1;
 		}
 		if (n>al) {
+			dprintf("ewsq overflow %d > %d\r\n",n,al);
 			return 1;
 		}
 	}
@@ -386,6 +393,7 @@ static void do_cmd_opbuf_exec(void) {
 			addr = buf2u32(opbuf+readptr);
 			readptr += 4;
 			if ((readptr+len.l) > opbuf_bytes) {
+				dprintf("writeb/writen opbuf overflow\r\n");
 				goto nakret;
 			}
 			for(i=0;;) {
@@ -402,6 +410,7 @@ static void do_cmd_opbuf_exec(void) {
 			uint32_t usecs = buf2u32(opbuf+readptr);
 			readptr += 4;
 			if (readptr > opbuf_bytes) {
+				dprintf("delay readptr overflow\r\n");
 				goto nakret;
 			}
 			udelay(usecs);
@@ -417,6 +426,7 @@ static void do_cmd_opbuf_exec(void) {
 				readptr += 4;
 			}
 			if (readptr > opbuf_bytes) {
+				dprintf("opbuf poll overflow\r\n");
 				goto nakret;
 			}
 			/* For random inputs i might not have bothered with the LUT,
@@ -429,6 +439,7 @@ static void do_cmd_opbuf_exec(void) {
 			uint32_t addr;
 			u16_u len;
 			if (!ewsq) {
+				dprintf("opbuf no EWSQ given to extwriten\r\n");
 				goto nakret;
 			}
 			len.b[0] = opbuf[readptr++];
@@ -436,6 +447,7 @@ static void do_cmd_opbuf_exec(void) {
 			addr = buf2u32(opbuf+readptr);
 			readptr += 4;
 			if ((readptr+len.l) > opbuf_bytes) {
+				dprintf("extwriten overflow opbuf\r\n");
 				goto nakret;
 			}
 			if (do_exec_opbuf_extwrite(ewsq, addr, opbuf+readptr, len.l)) goto nakret;
@@ -445,14 +457,17 @@ static void do_cmd_opbuf_exec(void) {
 		if (op == S_CMD_O_EXTWRITE_SEQ) {
 			ewsq = opbuf + readptr;
 			if (!(*ewsq)) {
+				dprintf("ewsq[0] = 0\r\n");
 				goto nakret;
 			}
 			readptr += (*ewsq) + 1;
 			if (readptr > opbuf_bytes) {
+				dprintf("ewsq overflow opbuf\r\n");
 				goto nakret;
 			}
 			continue;
 		}
+		dprintf("opbuf bad op %02X\r\n",op);
 		goto nakret;
 	}
 	opbuf_bytes = 0;
@@ -563,6 +578,11 @@ static void do_cmd_pin_state(uint8_t v) {
 }
 #endif
 
+#ifdef FRSER_FEAT_DPRINTF
+static void dprintf_send_wrapper(uint8_t d) {
+	SEND(d);
+}
+#endif
 
 void frser_main(void) {
 	next_token = 0x80; /* Booted. */
@@ -575,6 +595,7 @@ void frser_main(void) {
 	jmp_buf uart_timeout;
 #endif
 	do_cmd_set_proto(SUPPORTED_BUSTYPES); // select any protocol you like, just select one.
+	dprintf("Booted Test=%02X.\r\n",0x5A);
 	for(;;) {
 		uint8_t parbuf[S_MAXLEN]; /* Parameter buffer */
 		uint8_t a_len,p_len;
@@ -637,6 +658,13 @@ void frser_main(void) {
 				SEND(S_ACK);
 				SEND(next_token);
 				break;
+
+#ifdef FRSER_FEAT_DPRINTF
+			case S_CMD_Q_DBGOUT:
+				SEND(S_ACK);
+				dxprint_tx(dprintf_send_wrapper);
+				break;
+#endif
 
 #ifdef DYN_WRNMAX
 			case S_CMD_Q_WRNMAXLEN:

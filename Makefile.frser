@@ -3,5 +3,5 @@
 
 FRP := libfrser
 CFLAGS += -I$(FRP) -std=gnu99
-DEPS += $(FRP)/frser.h $(FRP)/frser-int.h $(FRP)/frser-flashapi.h $(FRP)/typeu.h $(FRP)/udelay.h frser-cfg.h $(FRP)/Makefile.frser
-SOURCES += $(FRP)/frser.c $(FRP)/udelay.c
+DEPS += $(FRP)/frser.h $(FRP)/frser-int.h $(FRP)/frser-flashapi.h $(FRP)/typeu.h $(FRP)/udelay.h frser-cfg.h $(FRP)/Makefile.frser $(FRP)/dxprint.h
+SOURCES += $(FRP)/frser.c $(FRP)/udelay.c $(FRP)/dxprint.c
