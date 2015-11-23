@@ -99,11 +99,13 @@ void spi_awrite_fast(uint8_t d) {
 }
 
 void spi_awrite(uint8_t d) {
+	uint8_t dummy = SPSR; /* Flush previous SPIF */
 	SPDR = d;
 	if (SPSR & _BV(WCOL)) {
 		loop_until_bit_is_set(SPSR,SPIF);
 		SPDR = d;
 	}
+	(void)dummy; /* Silence compiler */
 }
 
 uint8_t spi_aread(void) {
