@@ -7,10 +7,10 @@ void spi_init(void);
 uint8_t spi_uninit(void);
 uint8_t spi_txrx(const uint8_t c);
 
-#define FRSER_ASYNC_SPI_API
-void spi_write_fast(uint8_t d);
-void spi_write(uint8_t d);
-uint8_t spi_read(void);
+//#define FRSER_ASYNC_SPI_API
+void spi_awrite_fast(uint8_t d);
+void spi_awrite(uint8_t d);
+uint8_t spi_aread(void);
 
 /* Async SPI API:
  * write_fast: assumes SPI idle*, starts a transfer

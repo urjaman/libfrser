@@ -57,22 +57,22 @@ static void spi_spiop_start(uint32_t sbytes) {
 	spi_select();
 	if (sbytes) {
 		while (sbytes--) {
-			spi_write(RECEIVE());
+			spi_awrite(RECEIVE());
 		}
-		spi_read(); // spi_read implicitly waits for all writes to be done, in order to return data from last write...
+		spi_aread(); // read implicitly waits for all writes to be done, in order to return data from last write...
 	}
 }
 
 static void spi_spiop_end(uint32_t rbytes) {
 	if (rbytes) {
-		spi_write_fast(0xFF);
+		spi_awrite_fast(0xFF);
 		rbytes--;
 		while (rbytes--) {
-			uint8_t d = spi_read();
-			spi_write_fast(0xFF);
+			uint8_t d = spi_aread();
+			spi_awrite_fast(0xFF);
 			SEND(d);
 		}
-		SEND(spi_read());
+		SEND(spi_aread());
 	}
 	spi_deselect();
 }

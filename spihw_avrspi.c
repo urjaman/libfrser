@@ -94,11 +94,11 @@ uint8_t spi_uninit(void) {
 	return 0;
 }
 
-void spi_write_fast(uint8_t d) {
+void spi_awrite_fast(uint8_t d) {
 	SPDR = d;
 }
 
-void spi_write(uint8_t d) {
+void spi_awrite(uint8_t d) {
 	SPDR = d;
 	if (SPSR & _BV(WCOL)) {
 		loop_until_bit_is_set(SPSR,SPIF);
@@ -106,14 +106,14 @@ void spi_write(uint8_t d) {
 	}
 }
 
-uint8_t spi_read(void) {
+uint8_t spi_aread(void) {
 	loop_until_bit_is_set(SPSR,SPIF);
 	return SPDR;
 }
 
 uint8_t spi_txrx(const uint8_t c) {
-	spi_write_fast(c);
-	return spi_read();
+	spi_awrite_fast(c);
+	return spi_aread();
 }
 
 
