@@ -30,7 +30,6 @@ static void spi_localop_start(uint8_t sbytes, const uint8_t* sarr) {
 	for(i=0;i<sbytes;i++) spi_txrx(sarr[i]);
 }
 
-
 static void spi_localop_end(uint8_t rbytes, uint8_t* rarr) {
 	uint8_t i;
 	for(i=0;i<rbytes;i++) rarr[i] = spi_txrx(0xFF);
@@ -42,6 +41,8 @@ static void spi_localop(uint8_t sbytes, const uint8_t* sarr, uint8_t rbytes, uin
 	spi_localop_end(rbytes,rarr);
 }
 
+#ifndef FRSER_ASYNC_SPI_API
+/* Code for simple spi_txrx-only API. */
 static void spi_spiop_start(uint32_t sbytes) {
 	spi_select();
 	while (sbytes--) spi_txrx(RECEIVE());
@@ -51,6 +52,31 @@ static void spi_spiop_end(uint32_t rbytes) {
 	while (rbytes--) SEND(spi_txrx(0xFF));
 	spi_deselect();
 }
+#else
+static void spi_spiop_start(uint32_t sbytes) {
+	spi_select();
+	if (sbytes) {
+		while (sbytes--) {
+			spi_write(RECEIVE());
+		}
+		spi_read(); // spi_read implicitly waits for all writes to be done, in order to return data from last write...
+	}
+}
+
+static void spi_spiop_end(uint32_t rbytes) {
+	if (rbytes) {
+		spi_write_fast(0xFF);
+		rbytes--;
+		while (rbytes--) {
+			uint8_t d = spi_read();
+			spi_write_fast(0xFF);
+			SEND(d);
+		}
+		SEND(spi_read());
+	}
+	spi_deselect();
+}
+#endif
 
 void spi_spiop(uint32_t sbytes, uint32_t rbytes) {
 	spi_spiop_start(sbytes);
