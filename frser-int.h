@@ -111,12 +111,14 @@
 #include <stdint.h>
 
 /* Teensy vs AVR compat. */
+#ifndef pgm_read_ptr
+
 #if INTPTR_MAX > 0x7FFFUL
 #define pgm_read_ptr pgm_read_dword
 #else
-#ifndef pgm_read_ptr
 #define pgm_read_ptr pgm_read_word
 #endif
+
 #endif
 
 #endif /* _FRSER_INT_H_ */
