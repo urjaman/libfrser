@@ -20,6 +20,7 @@
 #include "nibble.h"
 #include "lpcfwh.h"
 #include "typeu.h"
+#include "uart.h"
 
 /* Generic */
 
@@ -131,6 +132,8 @@ uint8_t lpc_test(void) {
 #define FWH_START_WRITE 0b1110
 #define FWH_ABORT 0b1111
 
+static uint8_t fwh_read_128 = 0;
+
 bool fwh_init(void) {
 	return nibble_init();
 }
@@ -165,6 +168,56 @@ int fwh_read_address(uint32_t addr) {
 	return byte;
 }
 
+static int fwh_test_128b(void) {
+	fwh_start(FWH_START_READ);
+	fwh_nibble_write(0);	/* IDSEL hardwired */
+	fwh_send_imaddr(0xFFFFFF80);
+	fwh_nibble_write(7);	/* IMSIZE 128b */
+	nibble_set_dir(INPUT);
+	clock_cycle();
+	if (!nibble_ready_sync())
+		return 0;
+	for (int i=0;i<256;i++) clock_cycle();
+	clock_cycle();
+	nibble_set_dir(OUTPUT);
+	fwh_nibble_write(0xf);
+	clock_cycle();
+	return 1;
+}
+
+void fwh_read_n(uint32_t addr, uint32_t len) {
+	if (!fwh_read_128) {
+		while (len--) SEND(fwh_read_address(addr++));
+		return;
+	}
+	/* Align read ... */
+	while (addr & 0x7F) {
+		SEND(fwh_read_address(addr++));
+		len--;
+		if (!len) return;
+	}
+	while (len >= 128) {
+		fwh_start(FWH_START_READ);
+		fwh_nibble_write(0);	/* IDSEL hardwired */
+		fwh_send_imaddr(addr);
+		fwh_nibble_write(7);	/* IMSIZE 128b */
+		nibble_set_dir(INPUT);
+		clock_cycle();
+		if (!nibble_ready_sync())
+			break; // Try with the single-byte version then...
+		for (int i=0;i<128;i++) SEND(nib_byte_read());
+		clock_cycle();
+		nibble_set_dir(OUTPUT);
+		fwh_nibble_write(0xf);
+		clock_cycle();
+		len -= 128;
+		addr += 128;
+	}
+	/* Do the remainder if any. */
+	while (len--) SEND(fwh_read_address(addr++));
+
+}
+
 bool fwh_write_address(uint32_t addr, uint8_t byte) {
 	fwh_start(FWH_START_WRITE);
 	fwh_nibble_write(0);	/* IDSEL hardwired */
@@ -185,5 +238,6 @@ uint8_t fwh_test(void) {
 	nibble_hw_init();
 	fwh_init();
 	if (fwh_read_address(0xFFFFFFFF)==-1) return 0;
-	return 1;
+	fwh_read_128 = fwh_test_128b();
+	return 1 + fwh_read_128;
 }
