@@ -38,7 +38,11 @@ static bool nibble_ready_sync(void) {
 	uint8_t x=32;
 	do {
 		nib = clocked_nibble_read();
-		if (!(x--)) return false;
+		if (!(x--)) {
+			/* Do a proper-ish abort, just to be nice. */
+			nibble_abort();
+			return false;
+		}
 	} while (nib != 0);
 	return true;
 }
