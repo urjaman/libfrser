@@ -1,16 +1,9 @@
-/* This is an example of what libfrser expects main.h to contain. */
+/* This is a hypothetical example of what libfrser expects main.h to contain. */
 
-#define F_CPU 12000000
-#include <util/delay.h>
-#include <avr/io.h>
-#include <avr/sleep.h>
-#include <avr/pgmspace.h>
-#include <avr/power.h>
-#include <avr/sleep.h>
-#include <util/delay.h>
+#include <stdint.h>
+#include "pgmspace-compat.h"
 #include <ctype.h>
 #include <string.h>
 #include <stdlib.h>
-#include <alloca.h>
-#include <inttypes.h>
 #include <setjmp.h>
+#include <util/delay.h>

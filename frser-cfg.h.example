@@ -31,6 +31,12 @@
  * rest of the system, define this. Default is below. Not needed for SPI-only flashers. */
 //#define FRSER_SYS_BYTES 320
 
+/* If you want to override the opbuf size completely, define this: */
+//#define FRSER_OPBUF_LEN 1024
+
+/* If you want to override the read-n max len (default based on BAUD or 64k), define this: */
+//#define FRSER_READ_N_MAX (64*1024)
+
 /* Hooks that are run (and only run) before and after the RECEIVE() for the operation. *
  * Do not access any local variables in the frser_main function.
  * I'd say that if you need to access eg. op you could save it in RECEIVE() and access

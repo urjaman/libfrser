@@ -38,6 +38,12 @@
 #define WRNMAX_NONSPI (S_OPBUFLEN-8)
 
 #ifdef FRSER_FEAT_NONSPI
+
+#ifdef FRSER_OPBUF_LEN
+#define S_OPBUFLEN FRSER_OPBUF_LEN
+#else
+
+#if defined(RAMEND) && defined(RAMSTART)
 // Sys_bytes = stack + bss vars.
 #ifndef FRSER_SYS_BYTES
 #define FRSER_SYS_BYTES 320
@@ -45,7 +51,11 @@
 #define RAM_BYTES (RAMEND-RAMSTART+1)
 /* The length of the operation buffer */
 #define S_OPBUFLEN (RAM_BYTES-FRSER_SYS_BYTES-UART_BUFLEN-UARTTX_BUFLEN-(DXP_BUFSZ * sizeof(uintptr_t)))
+#else /* No RAM size info, default to 1k. */
+#define S_OPBUFLEN 1024
+#endif /* RAMEND && RAMSTART */
 
+#endif /* FRSER_OPBUF_LEN */
 
 #ifdef FRSER_FEAT_SPI
 /* We need to handle the opcode manually if both SPI and not SPI... */
@@ -86,13 +96,23 @@ uint8_t get_last_op(void) {
 #endif
 
 
+/* Allow read-n-max override by frser-cfg.h and apply a default if not that or baud given... */
+#ifdef FRSER_READ_N_MAX
+#define RDNMAX FRSER_READ_N_MAX
+#else
+
+#ifndef BAUD
+#define RDNMAX (64*1024)
+#else
 /* Calculate a nice read-n max value so that it doesnt hurt performance, but
    doesnt allow the device to be accidentally left in an "infini-tx" mode.
    This is the amount of data it can send based on baud rate in 2 seconds rounded to kB. */
-
 #define BYTERATE (BAUD/5)
 #define KBPSEC ((BYTERATE+512)/1024)
 #define RDNMAX (KBPSEC*1024)
+#endif /* BAUD */
+
+#endif /* FRSER_READ_N_MAX */
 
 /* Combined answer, substrings of which are used for nop, interface, and syncnop. */
 const char PROGMEM ca_combi[4] = { S_NAK, S_ACK, 0x02, 0x00 };

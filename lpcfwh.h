@@ -32,5 +32,6 @@ uint8_t fwh_test(void);
 void fwh_cleanup(void);
 int fwh_read_address(uint32_t addr);
 bool fwh_write_address(uint32_t addr, uint8_t byte);
+void fwh_read_n(uint32_t addr, uint32_t len);
 
 #endif /* LPCFWH_H_ */

@@ -94,13 +94,31 @@ uint8_t spi_uninit(void) {
 	return 0;
 }
 
-uint8_t spi_txrx(const uint8_t c) {
-	uint8_t r;
-	SPDR = c;
-	loop_until_bit_is_set(SPSR,SPIF);
-	r = SPDR;
-	return r;
+void spi_awrite_fast(uint8_t d) {
+	SPDR = d;
 }
+
+void spi_awrite(uint8_t d) {
+	uint8_t dummy = SPSR; /* Flush previous SPIF */
+	SPDR = d;
+	if (SPSR & _BV(WCOL)) {
+		loop_until_bit_is_set(SPSR,SPIF);
+		SPDR = d;
+	}
+	(void)dummy; /* Silence compiler */
+}
+
+uint8_t spi_aread(void) {
+	loop_until_bit_is_set(SPSR,SPIF);
+	return SPDR;
+}
+
+uint8_t spi_txrx(const uint8_t c) {
+	spi_awrite_fast(c);
+	return spi_aread();
+}
+
+
 
 /* This is here only to keep spi_initialized a static variable,
  * hidden from other bits of code. */

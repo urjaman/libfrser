@@ -19,8 +19,8 @@
  */
 
 #include "main.h"
-#include "udelay.h"
 
+void udelay(uint32_t usecs) __attribute__((weak));
 void udelay(uint32_t usecs) {
 	if (usecs < 16) {
 		uint8_t i=usecs;
