@@ -14,7 +14,7 @@
 #define S_CMD_Q_CHIPSIZE        0x06            /* Query supported chipsize (2^n format)        */
 #define S_CMD_Q_OPBUF           0x07            /* Query operation buffer size                  */
 
-#define S_CMD_Q_WRNMAXLEN	0x08		/* Query Write to opbuf: Write-N maximum lenght */
+#define S_CMD_Q_WRNMAXLEN	0x08		/* Query Write to opbuf: Write-N maximum length */
 #define S_CMD_R_BYTE            0x09            /* Read a single byte                           */
 #define S_CMD_R_NBYTES          0x0A            /* Read n bytes                                 */
 #define S_CMD_O_INIT            0x0B            /* Initialize operation buffer                  */
