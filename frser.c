@@ -479,154 +479,163 @@ static void do_cmd_pin_state(uint8_t v) {
 }
 #endif
 
-
-void frser_main(void) {
+void frser_init(void) {
 #ifdef FRSER_FEAT_PIN_STATE
 	last_set_pin_state = 1;
 #endif
 	LAST_OP(0xFE);
+	do_cmd_set_proto(SUPPORTED_BUSTYPES); // select any protocol you like, just select one.
+}
 
+void frser_operation(uint8_t op) {
 #ifdef FRSER_FEAT_UART_TIMEOUT
 	jmp_buf uart_timeout;
 #endif
-	do_cmd_set_proto(SUPPORTED_BUSTYPES); // select any protocol you like, just select one.
-	for(;;) {
-		uint8_t parbuf[S_MAXLEN]; /* Parameter buffer */
-		uint8_t a_len,p_len;
-		uint8_t op;
-		uint8_t i;
-#ifdef FRSER_FEAT_UART_TIMEOUT
-		uart_set_timeout(NULL);
-#endif
-		FRSER_FEAT_PRE_OPRX_HOOK();
-		op = RECEIVE();
-		FRSER_FEAT_POST_OPRX_HOOK();
+	uint8_t parbuf[S_MAXLEN]; /* Parameter buffer */
+	uint8_t a_len,p_len;
+	uint8_t i;
 
 #ifdef FRSER_FEAT_DBG_CONSOLE
-		if (op == 0x20) { /* Space bar gives you your debug console. */
-			ciface_main();
-			continue;
-		}
+	if (op == 0x20) { /* Space bar gives you your debug console. */
+		ciface_main();
+		return;
+	}
 #endif
-		if (op > S_MAXCMD) {
-			/* Protect against out-of-bounds array read. */
+
+	if (op > S_MAXCMD) {
+		/* Protect against out-of-bounds array read. */
+		SEND(S_NAK);
+		return;
+	}
+
+#ifdef FRSER_FEAT_UART_TIMEOUT
+	if (setjmp(uart_timeout)) {
+		/* We might be in the middle of an SPI operation or otherwise
+		   in a weird state. Re-init and hope for best. */
+		do_cmd_set_proto(last_set_bus_types);
+		SEND(S_NAK); /* Tell of a problem. */
+		uart_set_timeout(NULL);
+		return;
+	}
+#endif
+	LAST_OP(op);
+
+	a_len = pgm_read_byte(&(const_table[op].len));
+	/* These are the simple query-like operations, we just reply from ProgMem: */
+	/* NOTE: Operations that have a const answer cannot have parameters !!!    */
+	if (a_len) {
+		PGM_P data = (PGM_P)pgm_read_ptr(&(const_table[op].data));
+		for(i=0;i<a_len;i++) {
+			uint8_t c = pgm_read_byte(&(data[i]));
+			SEND(c);
+		}
+		return;
+	}
+#ifdef FRSER_FEAT_UART_TIMEOUT
+	uart_set_timeout(&uart_timeout);
+#endif
+
+	p_len = pgm_read_byte(&(op2len[op]));
+	for (i=0;i<p_len;i++) parbuf[i] = RECEIVE();
+
+	/* These are the operations that need real acting upon: */
+	switch (op) {
+		default:
 			SEND(S_NAK);
-			continue;
-		}
-#ifdef FRSER_FEAT_UART_TIMEOUT
-		if (setjmp(uart_timeout)) {
-			/* We might be in the middle of an SPI operation or otherwise
-			   in a weird state. Re-init and hope for best. */
-			do_cmd_set_proto(last_set_bus_types);
-			SEND(S_NAK); /* Tell of a problem. */
-			continue;
-		}
-#endif
-		LAST_OP(op);
-
-		a_len = pgm_read_byte(&(const_table[op].len));
-		/* These are the simple query-like operations, we just reply from ProgMem: */
-		/* NOTE: Operations that have a const answer cannot have parameters !!!    */
-		if (a_len) {
-			PGM_P data = (PGM_P)pgm_read_ptr(&(const_table[op].data));
-			for(i=0;i<a_len;i++) {
-				uint8_t c = pgm_read_byte(&(data[i]));
-				SEND(c);
-			}
-			continue;
-		}
-#ifdef FRSER_FEAT_UART_TIMEOUT
-		uart_set_timeout(&uart_timeout);
-#endif
-
-		p_len = pgm_read_byte(&(op2len[op]));
-		for (i=0;i<p_len;i++) parbuf[i] = RECEIVE();
-
-		/* These are the operations that need real acting upon: */
-		switch (op) {
-			default:
-				SEND(S_NAK);
-				break;
-
+			break;
 #ifdef DYN_WRNMAX
-			case S_CMD_Q_WRNMAXLEN:
-				SEND(S_ACK);
-				if (last_set_bus_types == CHIP_BUSTYPE_SPI) {
-					SEND(WRNMAX_SPI & 0xFF);
-					SEND(WRNMAX_SPI>>8);
-				} else {
-					SEND(WRNMAX_NONSPI & 0xFF);
-					SEND(WRNMAX_NONSPI>>8);
-				}
-				SEND(0);
-				break;
+		case S_CMD_Q_WRNMAXLEN:
+			SEND(S_ACK);
+			if (last_set_bus_types == CHIP_BUSTYPE_SPI) {
+				SEND(WRNMAX_SPI & 0xFF);
+				SEND(WRNMAX_SPI>>8);
+			} else {
+				SEND(WRNMAX_NONSPI & 0xFF);
+				SEND(WRNMAX_NONSPI>>8);
+			}
+			SEND(0);
+			break;
 #endif
 #ifdef FRSER_FEAT_NONSPI
-			case S_CMD_R_BYTE:
-				do_cmd_readbyte(parbuf);
-				break;
-			case S_CMD_R_NBYTES:
-				do_cmd_readnbytes(parbuf);
-				break;
-			case S_CMD_O_WRITEB:
-				do_cmd_opbuf_writeb(parbuf);
-				break;
-			case S_CMD_O_WRITEN:
-				do_cmd_opbuf_writen();
-				break;
-			case S_CMD_O_POLL:
-				do_cmd_opbuf_poll(parbuf);
-				break;
-			case S_CMD_O_POLL_DLY:
-				do_cmd_opbuf_poll_dly(parbuf);
-				break;
+		case S_CMD_R_BYTE:
+			do_cmd_readbyte(parbuf);
+			break;
+		case S_CMD_R_NBYTES:
+			do_cmd_readnbytes(parbuf);
+			break;
+		case S_CMD_O_WRITEB:
+			do_cmd_opbuf_writeb(parbuf);
+			break;
+		case S_CMD_O_WRITEN:
+			do_cmd_opbuf_writen();
+			break;
+		case S_CMD_O_POLL:
+			do_cmd_opbuf_poll(parbuf);
+			break;
+		case S_CMD_O_POLL_DLY:
+			do_cmd_opbuf_poll_dly(parbuf);
+			break;
 #endif
 
 #ifdef FRSER_FEAT_DYNPROTO
-			case S_CMD_Q_BUSTYPE: /* Dynamic bus types. */
-				SEND(S_ACK);
-				SEND(flash_plausible_protocols());
-				break;
+		case S_CMD_Q_BUSTYPE: /* Dynamic bus types. */
+			SEND(S_ACK);
+			SEND(flash_plausible_protocols());
+			break;
 #endif
 
-			case S_CMD_O_INIT:
-				SEND(S_ACK);
-				do_cmd_opbuf_init();
-				/* Select protocol atleast once per flashrom invocation in
-				   order to detect change of chip between flashrom runs */
-				do_cmd_set_proto(last_set_bus_types);
-				break;
+		case S_CMD_O_INIT:
+			SEND(S_ACK);
+			do_cmd_opbuf_init();
+			/* Select protocol atleast once per flashrom invocation in
+			   order to detect change of chip between flashrom runs */
+			do_cmd_set_proto(last_set_bus_types);
+			break;
 
-			case S_CMD_O_DELAY:
-				do_cmd_opbuf_delay(parbuf);
-				break;
-			case S_CMD_O_EXEC:
-				do_cmd_opbuf_exec();
-				break;
+		case S_CMD_O_DELAY:
+			do_cmd_opbuf_delay(parbuf);
+			break;
+		case S_CMD_O_EXEC:
+			do_cmd_opbuf_exec();
+			break;
+
 #ifdef FRSER_FEAT_S_BUSTYPE
-			case S_CMD_S_BUSTYPE:
-				SEND(S_ACK);
-				do_cmd_set_proto(parbuf[0]);
-				break;
+		case S_CMD_S_BUSTYPE:
+			SEND(S_ACK);
+			do_cmd_set_proto(parbuf[0]);
+			break;
 #endif
 #ifdef FRSER_FEAT_SPI
-			case S_CMD_O_SPIOP:
-				do_cmd_spiop(parbuf);
-				break;
+		case S_CMD_O_SPIOP:
+			do_cmd_spiop(parbuf);
+			break;
 #ifdef FRSER_FEAT_SPISPEED
-			case S_CMD_S_SPI_FREQ:
-				do_cmd_spispeed(parbuf);
-				break;
+		case S_CMD_S_SPI_FREQ:
+			do_cmd_spispeed(parbuf);
+			break;
 #endif
 #endif /* SPI */
 
 #ifdef FRSER_FEAT_PIN_STATE
-			case S_CMD_S_PIN_STATE:
-				SEND(S_ACK);
-				do_cmd_pin_state(parbuf[0]);
-				break;
+		case S_CMD_S_PIN_STATE:
+			SEND(S_ACK);
+			do_cmd_pin_state(parbuf[0]);
+			break;
+#endif
+	}
+#ifdef FRSER_FEAT_UART_TIMEOUT
+	uart_set_timeout(NULL);
 #endif
 
-		}
+}
+
+void frser_main(void) {
+	frser_init();
+	for(;;) {
+		uint8_t op;
+		FRSER_FEAT_PRE_OPRX_HOOK();
+		op = RECEIVE();
+		FRSER_FEAT_POST_OPRX_HOOK();
+		frser_operation(op);
 	}
 }

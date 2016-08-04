@@ -22,8 +22,12 @@
 
 #include "frser-cfg.h"
 
-/* Call this and frser owns your AVR. */
+/* Call this and frser owns your thingy. */
 void frser_main(void) __attribute__((noreturn));
+
+/* Alternatively, you can use this API: */
+void frser_init(void);
+void frser_operation(uint8_t op);
 
 #ifdef FRSER_FEAT_LAST_OP
 uint8_t get_last_op(void);
